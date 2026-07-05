@@ -3,13 +3,13 @@ name = "video-summary-bot"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-description = "基于 Rust + KVM + Claude Code 的智能视频内容总结工具"
+description = "Cross-platform VMM that runs AI agents in hardware-isolated micro VMs"
 license = "MIT"
 repository = "https://github.com/Vesper6/video-summary-bot"
 homepage = "https://github.com/Vesper6/video-summary-bot"
 readme = "README.md"
-keywords = ["video", "summary", "ai", "claude", "kvm"]
-categories = ["command-line-utilities", "api-bindings", "video-processing"]
+keywords = ["vmm", "hypervisor", "microvm", "agent", "kvm"]
+categories = ["virtualization", "command-line-utilities", "api-bindings"]
 authors = ["Vesper6 <your.email@example.com>"]
 
 [[bin]]
@@ -21,17 +21,20 @@ name = "video_summary_bot"
 path = "src/lib.rs"
 
 # =============================================
-# 依赖
+# 全平台通用依赖
 # =============================================
 [dependencies]
 
 # 异步运行时
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.40", features = ["rt-multi-thread", "macros", "signal", "sync", "time", "fs"] }
 futures = "0.3"
 async-trait = "0.1"
 
-# HTTP 客户端
-reqwest = { version = "0.12", features = ["json", "stream", "multipart", "rustls-tls"], default-features = false }
+# HTTP 客户端（axum 服务端和 reqwest 客户端都依赖 hyper）
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
 
 # 序列化
 serde = { version = "1.0", features = ["derive"] }
@@ -42,40 +45,20 @@ toml = "0.8"
 # CLI 框架
 clap = { version = "4.5", features = ["derive", "env"] }
 
-# 配置与环境变量
-config = { version = "0.14", features = ["toml", "yaml", "json"] }
+# 配置
+config = { version = "0.14", default-features = false, features = ["toml", "yaml"] }
 dotenvy = "0.15"
 
 # 日志
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # 错误处理
 anyhow = "1.0"
 thiserror = "1.0"
 
-# 浏览器自动化（KVM 虚拟机内）
-chromiumoxide = { version = "0.6", features = ["tokio-runtime"], default-features = false }
-
-# KVM 沙箱（可选直接 ioctl）
-# 注：高级场景推荐使用 libvirt-rs
-kvm-ioctls = { version = "0.13", optional = true }
-kvm-bindings = { version = "0.9", optional = true }
-
-# libvirt（VM 生命周期管理）
-libvirt = { version = "0.7", optional = true }
-
-# HTTP API 服务
-axum = { version = "0.7", features = ["macros"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
-
-# TUI
-ratatui = { version = "0.28", optional = true }
-crossterm = { version = "0.28", optional = true }
-
 # 时间
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 
 # UUID
 uuid = { version = "1.10", features = ["v4", "serde"] }
@@ -89,26 +72,75 @@ regex = "1.10"
 # URL 解析
 url = "2.5"
 
-# 文件系统操作
+# 文件系统
 walkdir = "2.5"
 tempfile = "3.13"
 
-# 并发
+# 并发原语
 parking_lot = "0.12"
 dashmap = "6.1"
 
-# Base64 / Hash
+# 加密 / 编码
 base64 = "0.22"
 sha2 = "0.10"
+
+# 字节序
+byteorder = "1.5"
+
+# 位字段
+bitflags = { version = "2.6", features = ["serde"] }
+
+# 字节序转换（设备模型需要）
+zerocopy = { version = "0.8", features = ["derive"] }
+
+# =============================================
+# Windows 平台：WHVP（Windows Hypervisor Platform）
+# =============================================
+[target.'cfg(target_os = "windows")'.dependencies]
+# WHVP API（可选 feature，未启用时不拉取）
+windows = { version = "0.58", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_System_Hypervisor",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_Networking",
+    "Win32_Networking_WinSock",
+    "Win32_Storage_FileSystem",
+] }
+
+# =============================================
+# macOS 平台：Hypervisor Framework
+# =============================================
+[target.'cfg(target_os = "macos")'.dependencies]
+# macOS Hypervisor Framework 绑定（可选 feature，未启用时不拉取）
+hypervisor = { version = "0.0.8", optional = true }
+
+# =============================================
+# Linux 平台：KVM
+# =============================================
+[target.'cfg(target_os = "linux")'.dependencies]
+# KVM ioctl 接口（可选 feature，未启用时不拉取）
+kvm-ioctls = { version = "0.13", optional = true }
+kvm-bindings = { version = "0.9", optional = true }
+libc = "0.2"
 
 # =============================================
 # Feature flags
 # =============================================
 [features]
-default = ["kvm-libvirt", "tui"]
-kvm-direct = ["dep:kvm-ioctls", "dep:kvm-bindings"]
-kvm-libvirt = ["dep:libvirt"]
-tui = ["dep:ratatui", "dep:crossterm"]
+default = []
+
+# 启用 HTTP API
+api = []
+
+# 启用 Windows WHVP 后端
+whvp = ["dep:windows"]
+
+# 启用 macOS Hypervisor Framework 后端
+hvf = ["dep:hypervisor"]
+
+# 启用 Linux KVM 后端
+kvm = ["dep:kvm-ioctls", "dep:kvm-bindings"]
 
 # =============================================
 # 开发依赖
