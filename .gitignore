@@ -1,0 +1,69 @@
+# =============================================
+# Video Summary Bot - .gitignore
+# =============================================
+
+# ---------- Rust / Cargo ----------
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# 保留 Cargo.lock（应用项目推荐提交）
+# 如果是 library，再决定是否 ignore Cargo.lock
+
+# ---------- IDE ----------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 日志与临时文件 ----------
+*.log
+logs/
+*.tmp
+*.bak
+*.swp
+
+# ---------- 环境配置 ----------
+.env
+.env.local
+.env.*.local
+
+# ---------- KVM 沙箱产物 ----------
+/vm-images/
+*.qcow2
+*.img
+*.iso
+
+# ---------- 抓取数据缓存 ----------
+/data/
+/cache/
+/tmp/
+
+# ---------- 输出产物 ----------
+/output/
+/summaries/
+*.mp4
+*.mp3
+*.wav
+*.srt
+*.vtt
+
+# ---------- 测试产物 ----------
+coverage/
+*.profraw
+
+# ---------- Claude Code 缓存 ----------
+.claude-cache/
+.claude/settings.local.json
+
+# ---------- 构建产物 ----------
+dist/
+build/
+*.tar.gz
+*.zip
