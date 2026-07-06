@@ -40,6 +40,11 @@ logs/
 *.img
 *.iso
 
+# ---------- Guest 镜像（用 scripts/prepare-guest.sh 生成）----------
+/assets/kernels/
+/assets/initramfs/
+/assets/rootfs/
+
 # ---------- 抓取数据缓存 ----------
 /data/
 /cache/

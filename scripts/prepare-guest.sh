@@ -48,14 +48,30 @@ log "Fetching Debian $SUITE kernel package list..."
 PKG_URL="$DEBIAN_MIRROR/dists/$SUITE/main/binary-$ARCH/Packages.gz"
 curl -fsSL "$PKG_URL" | gunzip > "$TMP_DIR/Packages"
 
-# 找 linux-image-amd64 对应的 .deb
-DEB_PATH=$(grep -A 20 '^Package: linux-image-amd64$' "$TMP_DIR/Packages" \
+# linux-image-amd64 是元包，它 Depends 于真正的内核包
+# 先找元包的 Depends，再找真实内核包
+META_DEPENDS=$(grep -A 30 '^Package: linux-image-amd64$' "$TMP_DIR/Packages" \
+  | grep '^Depends:' | head -1 | grep -oP 'linux-image-[0-9][^ ,)]+' | head -1)
+
+if [ -n "$META_DEPENDS" ]; then
+    log "Real kernel package: $META_DEPENDS"
+    REAL_PKG="$META_DEPENDS"
+else
+    # 直接搜索 linux-image-*-amd64（含版本号的真实包）
+    REAL_PKG=$(grep '^Package: linux-image-[0-9]' "$TMP_DIR/Packages" \
+      | grep 'amd64' | head -1 | awk '{print $2}')
+    log "Found kernel package: $REAL_PKG"
+fi
+
+[ -z "$REAL_PKG" ] && die "Could not find real kernel package"
+
+DEB_PATH=$(grep -A 30 "^Package: ${REAL_PKG}$" "$TMP_DIR/Packages" \
   | grep '^Filename:' | head -1 | awk '{print $2}')
 
-[ -z "$DEB_PATH" ] && die "Could not find linux-image-amd64 in Packages"
+[ -z "$DEB_PATH" ] && die "Could not find .deb path for $REAL_PKG"
 
 DEB_URL="$DEBIAN_MIRROR/$DEB_PATH"
-DEB_FILE="$TMP_DIR/linux-image-amd64.deb"
+DEB_FILE="$TMP_DIR/linux-image.deb"
 
 log "Downloading kernel: $DEB_URL"
 curl -fsSL --progress-bar "$DEB_URL" -o "$DEB_FILE"
@@ -65,17 +81,21 @@ log "Extracting vmlinuz from .deb..."
 cd "$TMP_DIR"
 ar x "$DEB_FILE"
 
-# data.tar 可能是 .xz / .zst / .gz
+# data.tar 可能是 .xz / .zst / .gz，解压全部内容
 if [ -f data.tar.xz ]; then
-    tar xf data.tar.xz ./boot/vmlinuz* 2>/dev/null || tar xJf data.tar.xz
+    tar xJf data.tar.xz -C "$TMP_DIR" 2>/dev/null || true
 elif [ -f data.tar.zst ]; then
-    tar --zstd -xf data.tar.zst ./boot/vmlinuz* 2>/dev/null || \
-        tar --zstd -xf data.tar.zst
+    tar --zstd -xf data.tar.zst -C "$TMP_DIR" 2>/dev/null || true
+elif [ -f data.tar.gz ]; then
+    tar xzf data.tar.gz -C "$TMP_DIR" 2>/dev/null || true
 else
-    tar xf data.tar.gz ./boot/vmlinuz* 2>/dev/null || tar xzf data.tar.gz
+    # 尝试所有可能的 data.tar 变体
+    for f in data.tar.*; do
+        [ -f "$f" ] && tar xf "$f" -C "$TMP_DIR" 2>/dev/null && break || true
+    done
 fi
 
-VMLINUZ=$(find "$TMP_DIR/boot" -name 'vmlinuz-*' | head -1)
+VMLINUZ=$(find "$TMP_DIR" -name 'vmlinuz-*' -not -path '*/proc/*' | head -1)
 [ -z "$VMLINUZ" ] && die "vmlinuz not found in .deb"
 
 KERNEL_VER=$(basename "$VMLINUZ" | sed 's/vmlinuz-//')
