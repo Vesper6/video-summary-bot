@@ -12,6 +12,8 @@ pub mod loader;
 pub mod memory;
 pub mod vcpu;
 
+pub use core::Vmm;
+
 use serde::{Deserialize, Serialize};
 
 /// VM 状态。
