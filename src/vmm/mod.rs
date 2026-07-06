@@ -62,6 +62,10 @@ pub struct VmConfig {
     /// Rootfs 路径
     pub rootfs: Option<std::path::PathBuf>,
 
+    /// 内核命令行（默认 console=hvc0 root=/dev/vda rw）
+    #[serde(default)]
+    pub cmdline: Option<String>,
+
     /// 共享目录（virtiofs）
     #[serde(default)]
     pub shared_dirs: Vec<SharedDir>,
@@ -85,6 +89,7 @@ impl VmConfig {
             kernel: None,
             initramfs: None,
             rootfs: None,
+            cmdline: None,
             shared_dirs: Vec::new(),
             port_forwards: Vec::new(),
             audio: true,
