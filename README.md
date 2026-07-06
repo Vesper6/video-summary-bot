@@ -1,99 +1,249 @@
 # Video Summary Bot
 
-> 🎬 视频总结机器人 — 基于 Rust 的跨平台 VMM（Virtual Machine Monitor），为 AI Agent 提供 micro VM 沙箱
+> 🎬 视频总结机器人 — 用 yt-dlp + Claude AI 自动分析视频内容，基于 Rust 构建
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.96+-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)]()
-[![Hypervisor](https://img.shields.io/badge/hypervisor-WHVP%20%7C%20HVF%20%7C%20KVM-purple.svg)]()
-[![LLM](https://img.shields.io/badge/LLM-Claude%20Code-cc785c.svg)]()
-[![Status](https://img.shields.io/badge/status-WIP-yellow.svg)]()
+[![CI](https://github.com/Vesper6/video-summary-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/Vesper6/video-summary-bot/actions/workflows/ci.yml)
+[![LLM](https://img.shields.io/badge/LLM-Claude%20Sonnet-cc785c.svg)]()
+[![Status](https://img.shields.io/badge/status-demo%20ready-green.svg)]()
 
-Video Summary Bot 是一个**跨平台轻量级 VMM**，参考 [TenBox](https://github.com/78/tenbox) 架构。它通过硬件辅助虚拟化（Windows WHVP / macOS Hypervisor Framework / Linux KVM）创建**微型虚拟机**，在隔离环境中运行 AI Agent 完成视频解析、内容总结、评论弹幕抓取等任务。
+Video Summary Bot（`vsb`）是一个命令行工具，通过 **yt-dlp 下载字幕** + **Claude AI 分析**，自动对 B 站、YouTube 等平台的视频生成结构化总结报告。
 
-> 💡 设计灵感来自 [tenbox.ai](https://tenbox.ai/) 的"tiny, easy, native agent VM"理念。
+底层基于 Rust 构建，集成了一个跨平台轻量级 VMM（参考 [TenBox](https://github.com/78/tenbox) 架构），未来支持在硬件隔离的 micro VM 中运行 AI Agent。
 
 ---
 
 ## 📑 目录
 
-- [核心特性](#-核心特性)
+- [当前功能](#-当前功能)
+- [快速开始](#-快速开始)
+- [使用方式](#-使用方式)
+- [健康检查](#-健康检查)
 - [架构概览](#-架构概览)
 - [技术栈](#-技术栈)
 - [项目结构](#-项目结构)
-- [快速开始](#-快速开始)
-- [使用方式](#-使用方式)
-- [跨平台 Hypervisor](#-跨平台-hypervisor)
-- [VM 生命周期](#-vm-生命周期)
 - [配置说明](#-配置说明)
-- [参考 tenbox](#-参考-tenbox)
 - [开发路线](#-开发路线)
 - [贡献指南](#-贡献指南)
-- [许可证](#-许可证)
 
 ---
 
-## ✨ 核心特性
+## ✅ 当前功能
 
-### 🎥 视频解析与总结（在 VM 内执行）
-- **智能内容总结**：由 Claude Code 驱动的语义级视频内容总结
-- **关键信息提取**：按时间线呈现视频中的重要信息
-- **进度条定位**：配备交互式进度条，可精准跳转到任意时间点
-- **分段讲解**：自动划分视频端（片段），分章节进行讲解
+| 功能 | 状态 | 说明 |
+|------|------|------|
+| `vsb summarize --url` | ✅ 可用 | yt-dlp 获取字幕 + Claude 分析 |
+| `vsb summarize --text` | ✅ 可用 | 直接传入文字稿，Claude 总结 |
+| `vsb summarize --text-file` | ✅ 可用 | 读取 .vtt/.srt/.txt 字幕文件 |
+| `vsb doctor all` | ✅ 可用 | 健康检查（必选/可选依赖） |
+| `vsb info` | ✅ 可用 | 系统信息（平台/hypervisor/工具） |
+| `vsb vm *` | 🚧 骨架 | VM 生命周期（未接通） |
+| `vsb crawl` | 🚧 骨架 | 评论/弹幕抓取（需 micro VM） |
+| WHVP 后端 | 🔧 实现 | 核心 API 已实现，待端到端测试 |
+| KVM 后端 | 🔧 实现 | 核心 API 已实现，待 Linux 测试 |
 
-### 🕷️ 数据抓取（在 micro VM 内执行）
-- **评论区抓取**：抓取视频评论区的评论内容
-- **弹幕抓取**：抓取视频中的实时弹幕
-- **多档位支持**：
-  | 档位 | 评论数量 | 弹幕数量 |
-  |------|---------|---------|
-  | 轻量 (light)  | 100     | 100     |
-  | 标准 (standard) | 1,000   | 1,000   |
-  | 全量 (full)   | 全部    | 全部    |
+---
 
-### 🖥️ 跨平台 Micro VM
-- **硬件虚拟化**：原生使用平台最优的 hypervisor
-- **轻量级**：每个 VM 都是精简的 Linux 客户机，启动快、占用小
-- **硬件隔离**：每个 Agent 在独立 VM 中运行
-- **可观测**：支持日志、串口、virtio-snd 音频、SPICE 显示
+## 🚀 快速开始
+
+### 1. 环境要求
+
+| 依赖 | 是否必须 | 说明 |
+|------|---------|------|
+| Rust 1.75+ | ✅ 必须 | `rustup` 安装 |
+| yt-dlp | ✅ 必须 | `pip install yt-dlp` |
+| Claude API Token | ✅ 必须 | CC Switch 或 `ANTHROPIC_AUTH_TOKEN` 环境变量 |
+| FFmpeg | 可选 | 提升字幕转换质量 |
+| cookies.txt | 可选 | 访问 B 站 / YouTube 需要登录的内容 |
+
+### 2. 构建
+
+```bash
+git clone https://github.com/Vesper6/video-summary-bot.git
+cd video-summary-bot
+
+cargo build --release
+
+# 可选：加入 PATH
+cp target/release/video-summary-bot ~/.local/bin/vsb   # Linux/macOS
+# 或手动添加 target/release/ 到 PATH（Windows）
+```
+
+### 3. 配置 Claude API
+
+CC Switch 用户无需额外配置，环境变量已自动注入。
+
+手动配置：
+
+```bash
+# .env 文件（复制 .env.example）
+cp .env.example .env
+# 编辑 .env，填写：
+ANTHROPIC_AUTH_TOKEN=sk-ant-xxxxx
+# 或
+ANTHROPIC_API_KEY=sk-ant-xxxxx
+
+# 如果使用代理 API（CC Switch）
+ANTHROPIC_BASE_URL=https://api.your-proxy.com
+ANTHROPIC_MODEL=claude-sonnet-4-6
+```
+
+### 4. 验证环境
+
+```bash
+vsb doctor all
+```
+
+输出示例（就绪状态）：
+
+```
+🩺 Video Summary Bot - 健康检查
+────────────────────────────────────────
+
+【必选】
+  ✅ Claude API                     Claude API ready (model: claude-sonnet-4-6)
+  ✅ yt-dlp                         yt-dlp
+
+【可选】
+  ⬜ Hypervisor (VM)                feature 'whvp' not enabled
+  ✅ FFmpeg (ASR)                   ffmpeg
+  ⬜ cookies.txt (B站/YouTube)       未找到 - 用浏览器插件导出（见下方）
+  ⬜ assets/ (VM kernels)           assets/ does not exist
+
+────────────────────────────────────────
+✅ 必选依赖全部就绪（2/2）
+   运行 `vsb summarize --url <URL>` 开始总结视频
+```
+
+---
+
+## 📖 使用方式
+
+### 模式一：URL 自动获取字幕（推荐）
+
+```bash
+# B 站视频（需要 cookies.txt，见下方）
+vsb summarize --url "https://www.bilibili.com/video/BV1xxx" --cookies cookies.txt
+
+# YouTube 视频（部分公开视频无需 cookies）
+vsb summarize --url "https://www.youtube.com/watch?v=xxxxx"
+
+# 控制总结深度
+vsb summarize --url "..." --level light     # 简要（3-5 要点）
+vsb summarize --url "..." --level standard  # 标准（默认）
+vsb summarize --url "..." --level full      # 深度分析
+
+# 保存为 Markdown 文件
+vsb summarize --url "..." --output ./output/
+
+# 跳过 yt-dlp，直接让 Claude 根据知识分析
+vsb summarize --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --no-subtitle
+```
+
+### 模式二：直接传入文字稿
+
+```bash
+# 内联文字
+vsb summarize --text "本视频讲解了 Rust 异步编程原理..."
+
+# 从字幕文件读取（.vtt / .srt / .txt）
+vsb summarize --text-file subtitle.vtt
+vsb summarize --text-file transcript.txt --level full --output ./output/
+```
+
+### 模式三：从 yt-dlp 手动下载字幕后分析
+
+```bash
+# 先用 yt-dlp 下载字幕
+yt-dlp --write-auto-sub --sub-lang zh-Hans --skip-download \
+       --cookies cookies.txt \
+       "https://www.bilibili.com/video/BV1xxx"
+
+# 然后分析
+vsb summarize --text-file "视频标题.zh-Hans.vtt" --level standard
+```
+
+---
+
+## 🍪 B 站 / YouTube cookies 配置
+
+B 站和 YouTube 需要登录才能获取完整字幕。导出 cookies：
+
+1. 安装浏览器插件 **[Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)**（Chrome/Edge）
+2. 登录 bilibili.com（或 youtube.com）
+3. 点击插件图标 → **Export**，保存为 `cookies.txt`
+4. 将文件放到项目根目录，或通过 `--cookies` 参数指定路径
+
+```bash
+# 项目根目录放 cookies.txt（自动检测）
+vsb summarize --url "https://www.bilibili.com/video/BV1xxx"
+
+# 或指定路径
+vsb summarize --url "..." --cookies /path/to/cookies.txt
+```
+
+---
+
+## 🩺 健康检查
+
+```bash
+vsb doctor all   # 完整健康检查
+vsb info         # 系统信息
+```
+
+`vsb info` 输出：
+
+```
+version       : 0.1.0
+platform      : windows
+hypervisor    : WHVP
+cpu count     : 32
+total memory  : 0 MB
+kernel family : windows
+yt-dlp        : ✓ yt-dlp (可用)
+claude        : ✓ Claude API ready (model: claude-sonnet-4-6) (可用)
+```
 
 ---
 
 ## 🏗️ 架构概览
 
 ```
-┌────────────────────────────────────────────────────────┐
-│                       Host OS                          │
-│   ┌────────────────────────────────────────────────┐   │
-│   │          video-summary-bot (Rust)              │   │
-│   │                                                │   │
-│   │   ┌──────────────┐   ┌─────────────────────┐   │   │
-│   │   │  CLI (clap)  │   │   LLM Proxy         │   │   │
-│   │   └──────┬───────┘   └─────────┬───────────┘   │   │
-│   │          │                     │               │   │
-│   │   ┌──────▼─────────────────────▼────────────┐  │   │
-│   │   │      VMM Core (平台无关)                │  │   │
-│   │   │      • VM Lifecycle                     │  │   │
-│   │   │      • Device Model                     │  │   │
-│   │   │      • Boot Loader                      │  │   │
-│   │   └──────┬──────────────────────────────────┘  │   │
-│   │          │                                     │   │
-│   │   ┌──────▼─────────┬─────────────┬──────────┐  │   │
-│   │   │ WHVP Backend   │ HVF Backend │ KVM      │  │   │
-│   │   │ (Windows)      │ (macOS)     │ Backend  │  │   │
-│   │   └────────────────┴─────────────┴──────────┘  │   │
-│   └────────────────────────────────────────────────┘   │
-│                                                        │
-│   ┌────────────────────────────────────────────────┐   │
-│   │  Micro VM (Linux guest, 精简 Alpine/Ubuntu)    │   │
-│   │  ┌──────────────────────────────────────────┐  │   │
-│   │  │  Claude Code Agent                       │  │   │
-│   │  │  + Chromium (headless)                   │  │   │
-│   │  │  + FFmpeg                                │  │   │
-│   │  └──────────────────────────────────────────┘  │   │
-│   │  virtio: net | block | fs | gpu | snd | input │   │
-│   └────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                     Host OS                              │
+│                                                          │
+│   vsb (Rust CLI)                                         │
+│   ┌──────────┐   ┌────────────┐   ┌──────────────────┐  │
+│   │   CLI    │   │  Claude    │   │  SubtitleFetcher │  │
+│   │  (clap)  │──▶│  Client   │   │  (yt-dlp wrapper)│  │
+│   └──────────┘   └─────┬──────┘   └────────┬─────────┘  │
+│                        │                   │             │
+│                  Anthropic API         yt-dlp process    │
+│                  (CC Switch)           (字幕下载)         │
+│                                                          │
+│   ┌──────────────────────────────────────────────────┐   │
+│   │  VMM Core（骨架，待接通）                         │   │
+│   │  WHVP(Windows) / KVM(Linux) / HVF(macOS)        │   │
+│   └──────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+**当前实现的数据流：**
+
+```
+视频 URL
+  │
+  ├── yt-dlp → 字幕(.vtt) + 元数据(标题/时长/简介)
+  │                    │
+  │              parse_vtt() 清理时间戳
+  │                    │
+  └──────────────▶ Claude API
+                       │
+                  结构化总结报告
+                       │
+                  stdout + 可选 .md 文件
 ```
 
 ---
@@ -102,302 +252,129 @@ Video Summary Bot 是一个**跨平台轻量级 VMM**，参考 [TenBox](https://
 
 | 类别 | 技术 |
 |------|------|
-| **语言** | Rust 1.96+ (Edition 2021) |
-| **异步运行时** | Tokio |
-| **CLI 框架** | clap |
-| **HTTP 服务** | axum |
-| **HTTP 客户端** | reqwest |
-| **序列化** | serde + serde_json + serde_yaml + toml |
-| **日志** | tracing + tracing-subscriber |
-| **配置** | config-rs + dotenvy |
-| **LLM** | Claude Code CLI / Anthropic API |
-| **跨平台 Hypervisor** | WHVP / Hypervisor Framework / KVM |
-| **链接器** | rust-lld（Rust 自带） |
+| 语言 | Rust 1.75+（Edition 2021） |
+| 异步运行时 | Tokio（rt-multi-thread + process） |
+| CLI 框架 | clap 4 |
+| HTTP 客户端 | reqwest（rustls-tls） |
+| LLM | Anthropic Messages API（兼容 CC Switch） |
+| 字幕下载 | yt-dlp（subprocess） |
+| 序列化 | serde + serde_json |
+| 日志 | tracing + tracing-subscriber |
+| 临时文件 | tempfile |
 
-### 平台后端
+### 平台 Hypervisor 后端
 
-| 平台 | Hypervisor | Rust crate |
-|------|-----------|------------|
-| **Windows** | WHVP (Windows Hypervisor Platform) | `winhv` / `winhvplatform` |
-| **macOS (Apple Silicon + Intel)** | Hypervisor Framework | `hypervisor-rs` |
-| **Linux (x86_64 / arm64)** | KVM | `kvm-ioctls` / `kvm-bindings` |
+| 平台 | 后端 | 状态 |
+|------|------|------|
+| Windows 10/11 | WHVP（Windows Hypervisor Platform） | 🔧 核心实现 |
+| macOS 11+ | Hypervisor Framework（HVF） | 🚧 骨架 |
+| Linux 5.10+ | KVM（via kvm-ioctls） | 🔧 核心实现 |
 
 ---
 
 ## 📂 项目结构
 
 ```
-Video-Summary-Bot/
+video-summary-bot/
 ├── src/
-│   ├── main.rs              # 程序入口（CLI / daemon）
-│   ├── lib.rs               # 库根
-│   ├── cli/                 # CLI 命令（vm ls/create/start/...）
-│   │   ├── mod.rs
-│   │   ├── vm.rs
-│   │   ├── summary.rs
-│   │   └── system.rs
-│   ├── vmm/                 # VMM 核心（平台无关）
-│   │   ├── mod.rs
-│   │   ├── core.rs          # VMM 主循环
-│   │   ├── vcpu.rs          # vCPU 抽象
-│   │   ├── memory.rs        # 客户机内存管理
-│   │   └── loader.rs        # 内核/Initramfs 加载
-│   ├── devices/             # virtio 设备模型
-│   │   ├── mod.rs
-│   │   ├── virtio_block.rs
-│   │   ├── virtio_net.rs
-│   │   ├── virtio_fs.rs     # virtiofs 共享目录
-│   │   ├── virtio_gpu.rs    # virtio-gpu + SPICE
-│   │   ├── virtio_snd.rs    # virtio-snd 音频
-│   │   ├── virtio_input.rs
-│   │   └── serial.rs        # 串口
-│   ├── hypervisor/          # 平台 Hypervisor 抽象
-│   │   ├── mod.rs           # trait Hypervisor
-│   │   ├── windows.rs       # WHVP 实现（Windows）
-│   │   ├── macos.rs         # HVF 实现（macOS）
-│   │   └── linux.rs         # KVM 实现（Linux）
-│   ├── image/               # 磁盘镜像
-│   │   ├── mod.rs
-│   │   ├── qcow2.rs         # qcow2 格式读写
-│   │   └── raw.rs
-│   ├── network/             # 网络（NAT、端口转发）
-│   │   ├── mod.rs
-│   │   ├── dhcp.rs
-│   │   └── nat.rs
-│   ├── daemon/              # 系统守护进程（参考 tenboxd）
-│   │   ├── mod.rs
-│   │   └── rpc.rs           # 本地 RPC over Unix socket / Named Pipe
-│   ├── agents/              # 视频总结 AGENT
-│   │   ├── mod.rs
-│   │   ├── planner.rs
-│   │   └── claude.rs        # Claude Code 集成
-│   ├── crawler/             # 爬虫模块（在 VM 内运行）
-│   │   ├── mod.rs
-│   │   ├── comments.rs
-│   │   └── danmaku.rs
-│   ├── summarizer/          # 内容总结
-│   │   ├── mod.rs
-│   │   ├── asr.rs           # 语音转文字（Whisper）
-│   │   └── timeline.rs      # 时间线分段
+│   ├── main.rs              # 程序入口
+│   ├── lib.rs               # 库根（13 个模块）
+│   ├── error.rs             # 统一错误类型
+│   ├── cli/                 # CLI 命令
+│   │   ├── mod.rs           # 顶层路由
+│   │   ├── summary.rs       # summarize / crawl ✅
+│   │   ├── vm.rs            # vm ls/create/start/... 🚧
+│   │   └── system.rs        # doctor / info ✅
+│   ├── agents/
+│   │   ├── claude.rs        # Claude API 客户端 ✅
+│   │   └── planner.rs       # 任务规划 🚧
+│   ├── crawler/
+│   │   ├── subtitle.rs      # yt-dlp 字幕下载 ✅
+│   │   ├── comments.rs      # 评论抓取 🚧
+│   │   └── danmaku.rs       # 弹幕抓取 🚧
+│   ├── hypervisor/
+│   │   ├── mod.rs           # Hypervisor trait
+│   │   ├── windows.rs       # WHVP 实现 🔧
+│   │   ├── linux.rs         # KVM 实现 🔧
+│   │   └── macos.rs         # HVF 骨架 🚧
+│   ├── vmm/                 # VMM 核心 🚧
+│   ├── devices/             # virtio 设备 🚧
+│   ├── image/               # 磁盘镜像 🚧
+│   ├── network/             # NAT/DHCP 🚧
+│   ├── summarizer/          # ASR + 时间线 🚧
 │   ├── config/              # 配置加载
-│   │   └── mod.rs
-│   └── utils/
-│       └── mod.rs
-├── assets/                  # 内置资源
-│   ├── kernels/             # Linux 内核镜像
-│   ├── initramfs/           # 初始 ramdisk
-│   └── rootfs/              # 客户机 rootfs
-├── docs/                    # 文档
-│   ├── architecture.md      # 架构详解
-│   ├── hypervisor.md        # Hypervisor 后端说明
-│   └── tenbox-reference.md  # tenbox 架构参考
-├── tests/                   # 测试
+│   └── utils/               # 工具函数
+├── .github/
+│   ├── workflows/
+│   │   ├── ci.yml           # 3 平台 CI（lint/build/test）
+│   │   └── release.yml      # 跨平台 release 构建
+│   ├── dependabot.yml
+│   └── ISSUE_TEMPLATE/      # Bug / Feature / Question 模板
+├── docs/
+│   └── tenbox-reference.md
 ├── Cargo.toml
-├── Cargo.lock
 ├── .env.example
-├── LICENSE
-├── README.md
-├── CLAUDE.md
 └── CONTRIBUTING.md
 ```
 
----
-
-## 🚀 快速开始
-
-### 环境要求
-
-| 平台 | 要求 |
-|------|------|
-| **Windows** | Windows 10/11（已启用 Hyper-V / WHP）；Rust 1.96+；rust-lld（已自带） |
-| **macOS** | macOS 11+（Apple Silicon 或 Intel）；Rust 1.96+ |
-| **Linux** | 内核 ≥ 5.10；`/dev/kvm` 可用；Rust 1.96+ |
-
-通用前置：
-- FFmpeg（视频处理）
-- Claude Code CLI（[安装](https://claude.com/claude-code)）
-- 可选：`qemu-img`（用于生成客户机磁盘镜像）
-
-### 构建
-
-```bash
-git clone https://github.com/Vesper6/video-summary-bot.git
-cd video-summary-bot
-cargo build --release
-```
-
-### 验证环境
-
-```bash
-./target/release/video-summary-bot doctor
-# 检查 hypervisor 是否可用、依赖是否完整
-```
-
-### 首次运行
-
-```bash
-# 初始化（下载 Linux 内核、initramfs、基础 rootfs）
-./target/release/video-summary-bot init
-
-# 创建一个 VM 配置
-./target/release/video-summary-bot vm create --name summary-vm --cpus 2 --memory 2G
-
-# 启动 VM
-./target/release/video-summary-bot vm start summary-vm
-
-# 列出 VM
-./target/release/video-summary-bot vm ls
-```
-
----
-
-## 📖 使用方式
-
-### CLI 命令
-
-```bash
-# 系统诊断
-video-summary-bot doctor
-video-summary-bot system info
-
-# VM 生命周期
-video-summary-bot vm ls                    # 列出所有 VM
-video-summary-bot vm create --name X       # 创建 VM
-video-summary-bot vm edit --name X         # 编辑 VM 配置
-video-summary-bot vm start X               # 启动
-video-summary-bot vm stop X                # 停止
-video-summary-bot vm reboot X              # 重启
-video-summary-bot vm shutdown X            # 优雅关机
-video-summary-bot vm rm X                  # 删除
-video-summary-bot vm console X             # 连接串口/控制台
-video-summary-bot vm logs X                # 查看日志
-
-# 视频总结
-video-summary-bot summarize --url "..." --level standard
-
-# 抓取评论/弹幕
-video-summary-bot crawl --url "..." --type comments --level heavy
-
-# 守护进程（Linux）
-video-summary-bot daemon start
-video-summary-bot daemon stop
-video-summary-bot daemon status
-```
-
-### HTTP API
-
-```bash
-# 启动 API 服务
-video-summary-bot serve --port 8080
-
-# 调用
-curl -X POST http://localhost:8080/api/summarize \
-  -H "Content-Type: application/json" \
-  -d '{"url": "...", "level": "standard"}'
-```
-
----
-
-## 🖥️ 跨平台 Hypervisor
-
-VMM 的核心是平台抽象层 `Hypervisor` trait：
-
-```rust
-// src/hypervisor/mod.rs
-pub trait Hypervisor: Send + Sync {
-    fn create_vm(&self, config: &VmConfig) -> Result<VmHandle>;
-    fn start_vcpu(&self, vm: VmHandle, vcpu_id: u32) -> Result<()>;
-    fn handle_exit(&self, vm: VmHandle, exit: VcpuExit) -> Result<VcpuAction>;
-    fn map_memory(&self, vm: VmHandle, gpa: u64, hva: u64, size: usize) -> Result<()>;
-    // ... 更多接口
-}
-```
-
-各平台实现：
-
-| 文件 | 后端 | 平台 |
-|------|------|------|
-| `hypervisor/windows.rs` | WHVP via `WHvCreatePartition` | Windows 10/11 |
-| `hypervisor/macos.rs` | Hypervisor Framework via `hv_vm_create` | macOS 11+ |
-| `hypervisor/linux.rs` | KVM via `/dev/kvm` ioctls | Linux 5.10+ |
-
-启用对应平台特性（`Cargo.toml` 中的 `[target.'cfg(...)']`）。
-
----
-
-## 🔄 VM 生命周期
-
-参考 tenboxd 的实现，提供完整 VM 管理：
-
-```
-┌────────┐    ┌────────┐    ┌──────────┐    ┌─────────┐
-│ Stopped│───▶│ Created│───▶│ Starting │───▶│ Running │
-└────────┘    └────────┘    └──────────┘    └────┬────┘
-     ▲                                           │
-     │           ┌──────────┐                    │
-     └───────────│ Stopping │◀───────────────────┘
-                 └──────────┘
-```
-
-每个状态都有对应的事件回调与持久化机制（`vm.json` 配置文件）。
+图例：✅ 已实现可用 | 🔧 核心已实现待测试 | 🚧 骨架/未实现
 
 ---
 
 ## ⚙️ 配置说明
 
-参见 [.env.example](.env.example)。关键变量：
+复制 `.env.example` 并按需修改：
 
-| 变量 | 说明 |
-|------|------|
-| `ANTHROPIC_API_KEY` | Claude API 密钥 |
-| `LLM_MODEL` | Claude 模型（默认 `claude-sonnet-5`） |
-| `VM_DEFAULT_CPUS` | VM 默认 vCPU 数 |
-| `VM_DEFAULT_MEMORY_MB` | VM 默认内存 |
-| `VM_ROOTFS_PATH` | 默认 rootfs 路径 |
-| `KERNEL_PATH` | Linux 内核路径 |
-| `INITRAMFS_PATH` | initramfs 路径 |
+```bash
+cp .env.example .env
+```
 
----
-
-## 📚 参考 tenbox
-
-本项目架构深受 [TenBox](https://github.com/78/tenbox) 启发，关键设计借鉴：
-
-| TenBox 特性 | 本项目借鉴 |
-|-------------|-----------|
-| 跨平台 VMM（WHVP/HVF/KVM） | ✅ 同 |
-| 共享 C++ 运行时 | ✅ 改为共享 Rust 运行时 |
-| `tenboxd` 守护进程 | ✅ `daemon` 模块 |
-| virtio 全套设备 | ✅ `devices/` 模块 |
-| qcow2 镜像 | ✅ `image/qcow2.rs` |
-| SPICE 远程桌面 | 🚧 计划中 |
-| LLM proxy | ✅ 内置 |
-| `tenbox` CLI | ✅ `cli/` 模块 |
-
-详细对比见 [docs/tenbox-reference.md](docs/tenbox-reference.md)。
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `ANTHROPIC_AUTH_TOKEN` | Claude API Token（CC Switch 用这个） | — |
+| `ANTHROPIC_API_KEY` | 标准 Anthropic API Key | — |
+| `ANTHROPIC_BASE_URL` | API 代理地址 | `https://api.anthropic.com` |
+| `ANTHROPIC_MODEL` | 使用的模型 | `claude-sonnet-4-6` |
+| `LOG_FORMAT` | 日志格式（`text` / `json`） | `text` |
+| `RUST_LOG` | 日志级别（`info` / `debug` / `warn`） | `warn` |
+| `VM_DEFAULT_CPUS` | VM 默认 vCPU 数（未来使用） | `2` |
+| `VM_DEFAULT_MEMORY_MB` | VM 默认内存（未来使用） | `2048` |
 
 ---
 
 ## 🛣️ 开发路线
 
-- [x] 项目立项 + README + Cargo.toml + 配套文件
-- [x] Rust 工具链验证（rust-lld 自带，无需 MSVC Build Tools）
-- [ ] Hypervisor trait 设计
-- [ ] Windows WHVP 后端
-- [ ] Linux KVM 后端
-- [ ] macOS HVF 后端
-- [ ] vCPU 与客户机内存抽象
-- [ ] virtio 设备模型（net/block/fs/gpu/snd/input）
-- [ ] qcow2 镜像读写
-- [ ] Linux 客户机 rootfs（Alpine 基础）
-- [ ] 内核与 initramfs 加载
-- [ ] VM 生命周期管理（CLI + daemon）
-- [ ] Claude Code 集成
-- [ ] 视频 ASR 转写
-- [ ] 评论/弹幕爬虫（在 VM 内）
-- [ ] 时间线分段与总结
-- [ ] HTTP API（axum）
+### 已完成
+- [x] 项目基础（Cargo.toml、CI/CD、Issue 模板、Dependabot）
+- [x] 全模块骨架（45 个 .rs 文件）
+- [x] Claude API 客户端（兼容 CC Switch 代理）
+- [x] yt-dlp 字幕下载器（VTT/SRT 解析）
+- [x] `summarize` 命令（3 种输入模式：URL/文字稿/文件）
+- [x] `doctor` 健康检查（必选/可选分级）
+- [x] Windows WHVP 后端骨架（partition 创建、内存映射、vCPU run loop）
+- [x] Linux KVM 后端骨架（mmap、KVM_CREATE_VM、vCPU 寄存器、run loop）
+- [x] GitHub Actions CI（3 平台 lint/build/test）
+- [x] Release 工作流（5 架构跨平台构建）
+
+### 进行中 / 近期
+- [ ] B 站完整字幕获取（需 cookies，端到端验证）
+- [ ] `summarize` 输出 HTML 格式
+- [ ] HTTP API（`vsb serve`，axum 路由）
+
+### 中期
+- [ ] Windows WHVP 端到端 VM 启动验证
+- [ ] Linux KVM 端到端 VM 启动验证
+- [ ] Alpine Linux rootfs + 内核准备脚本
+- [ ] virtio-net / virtio-block 设备实现
+- [ ] VM 生命周期 CLI 接通（`vsb vm start/stop`）
+
+### 长期
+- [ ] macOS HVF 后端实现
+- [ ] virtio-fs 共享目录
+- [ ] ASR 转写（Whisper 集成）
+- [ ] 评论/弹幕爬虫（在 micro VM 内运行）
 - [ ] SPICE 远程桌面（可选）
+- [ ] 守护进程（systemd / Windows Service）
 
 ---
 
@@ -409,7 +386,7 @@ pub trait Hypervisor: Send + Sync {
 cargo fmt
 cargo clippy --all-targets --all-features -- -D warnings
 cargo test
-cargo build --release
+cargo build
 ```
 
 ---
@@ -429,6 +406,6 @@ cargo build --release
 
 <div align="center">
 
-**⚡ 让视频总结变得简单而智能 ⚡**
+**⚡ yt-dlp + Claude = 视频秒懂 ⚡**
 
 </div>
