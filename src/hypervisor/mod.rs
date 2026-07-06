@@ -106,6 +106,10 @@ pub trait Hypervisor: Send + Sync {
 
     /// 后端名称。
     fn backend_name(&self) -> &'static str;
+
+    /// 请求停止 run 循环（可选，默认忽略）。
+    /// run 循环会在下一轮检查此标志并优雅退出。
+    fn request_stop(&self) {}
 }
 
 /// 探测当前平台 hypervisor。

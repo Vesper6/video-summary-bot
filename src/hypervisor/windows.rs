@@ -294,6 +294,8 @@ struct WhvpState {
     /// Guest RAM 宿主指针（用于读取指令做长度解码）
     ram_ptr: usize,
     ram_size: u64,
+    /// 停止标志：run 循环每轮检查（GUI/API 停止时置位）
+    stop_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
 pub struct WhvpBackend {
@@ -312,6 +314,7 @@ impl WhvpBackend {
                     vcpu_entry: None,
                     ram_ptr: 0,
                     ram_size: 0,
+                    stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 })),
             })
         }
@@ -392,6 +395,14 @@ impl Hypervisor for WhvpBackend {
 
     fn backend_name(&self) -> &'static str {
         "WHVP"
+    }
+
+    fn request_stop(&self) {
+        #[cfg(all(target_os = "windows", feature = "whvp"))]
+        {
+            self.state.read().stop_flag
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
     }
 
     fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()> {
@@ -488,6 +499,8 @@ impl Hypervisor for WhvpBackend {
 
                 let ram_ptr = state.ram_ptr;
                 let ram_size = state.ram_size;
+                let stop_flag = Arc::clone(&state.stop_flag);
+                stop_flag.store(false, std::sync::atomic::Ordering::SeqCst);
 
                 let entry = state.vcpu_entry
                     .ok_or_else(|| Error::Vmm(
@@ -551,6 +564,11 @@ impl Hypervisor for WhvpBackend {
                 let mut reason_hist: std::collections::HashMap<i32, u64> = std::collections::HashMap::new();
                 let mut io_ports_seen: std::collections::HashMap<u16, u64> = std::collections::HashMap::new();
                 loop {
+                    // GUI/API 请求停止：优雅退出
+                    if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                        tracing::info!("vCPU 0 收到停止请求，退出 run 循环");
+                        break;
+                    }
                     let exit_ctx = partition.run_vcpu(0)?;
                     step_count += 1;
                     *reason_hist.entry(exit_ctx.ExitReason.0).or_insert(0) += 1;
@@ -601,6 +619,7 @@ impl Hypervisor for WhvpBackend {
                                             // THR：输出字符
                                             if byte == b'\n' {
                                                 let line = String::from_utf8_lossy(&uart_line);
+                                                crate::guest_log::emit(&line);
                                                 tracing::info!(target: "guest", "{}", line);
                                                 uart_line.clear();
                                             } else if byte != b'\r' {
@@ -682,8 +701,10 @@ impl Hypervisor for WhvpBackend {
                             }
                         }
                     }
-                    if step_count > 200_000 {
-                        tracing::warn!("vCPU 0 步数超限，停止");
+                    // 硬上限仅作最后防线（真正的时间边界由 boot.rs 的 timeout +
+                    // stop_flag 控制）。设得足够高，让内核有机会跑到 userspace。
+                    if step_count > 500_000_000 {
+                        tracing::warn!("vCPU 0 步数达到硬上限（5 亿），停止");
                         break;
                     }
                 }

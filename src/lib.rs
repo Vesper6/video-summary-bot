@@ -27,6 +27,8 @@ pub mod crawler;
 pub mod daemon;
 pub mod devices;
 pub mod error;
+pub mod guest_control;
+pub mod guest_log;
 pub mod gui;
 pub mod hypervisor;
 pub mod image;
