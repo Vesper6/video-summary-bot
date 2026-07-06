@@ -37,6 +37,10 @@ pub enum Error {
     #[error("crawler error: {0}")]
     Crawler(String),
 
+    /// IPC / Guest Agent 错误
+    #[error("ipc error: {0}")]
+    Ipc(String),
+
     /// 总结错误
     #[error("summarizer error: {0}")]
     Summarizer(String),

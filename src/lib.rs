@@ -8,7 +8,8 @@
 //! - [`hypervisor`] — 跨平台 hypervisor 抽象
 //! - [`devices`] — virtio 设备模型
 //! - [`image`] — 磁盘镜像（qcow2 / raw）
-//! - [`network`] — 网络（NAT / DHCP）
+//! - [`network`] — 网络（NAT / DHCP / LLM 代理）
+//! - [`ipc`] — 宿主 ↔ Guest IPC（VirtIO Serial / 命名管道）
 //! - [`daemon`] — 守护进程
 //! - [`agents`] — AI Agent 集成（Claude Code）
 //! - [`crawler`] — 视频数据抓取（在 VM 内运行）
@@ -27,6 +28,7 @@ pub mod devices;
 pub mod error;
 pub mod hypervisor;
 pub mod image;
+pub mod ipc;
 pub mod network;
 pub mod summarizer;
 pub mod utils;
