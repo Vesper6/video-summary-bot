@@ -128,12 +128,13 @@ libc = "0.2"
 # Feature flags
 # =============================================
 [features]
+# 平台默认特性
 default = []
 
 # 启用 HTTP API
 api = []
 
-# 启用 Windows WHVP 后端
+# 启用 Windows WHVP 后端（Windows 上推荐）
 whvp = ["dep:windows"]
 
 # 启用 macOS Hypervisor Framework 后端
