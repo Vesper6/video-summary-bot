@@ -113,16 +113,26 @@ fn resolve_gui_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("VSB_GUI_DIR") {
         return PathBuf::from(dir);
     }
-    let candidates = [
-        PathBuf::from("gui/web"),
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("gui/web"),
-    ];
+
+    let mut candidates = Vec::new();
+    // 安装目录：与 .exe 同级的 gui/web（Windows 安装程序布局）
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            candidates.push(dir.join("gui/web"));
+        }
+    }
+    candidates.push(PathBuf::from("gui/web"));
+    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("gui/web"));
+
     for c in &candidates {
         if c.join("index.html").exists() {
             return c.clone();
         }
     }
-    candidates[1].clone()
+    candidates
+        .last()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("gui/web"))
 }
 
 #[derive(Serialize)]

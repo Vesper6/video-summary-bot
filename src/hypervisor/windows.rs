@@ -206,6 +206,26 @@ mod whvp_impl {
             }
         }
 
+        /// 把 guest 虚拟地址翻译成 guest 物理地址（走 guest 页表）。
+        pub fn translate_gva(&self, vp_index: u32, gva: u64) -> Option<u64> {
+            unsafe {
+                let mut result: WHV_TRANSLATE_GVA_RESULT = std::mem::zeroed();
+                let mut gpa: u64 = 0;
+                let hr = WHvTranslateGva(
+                    self.handle, vp_index, gva,
+                    WHvTranslateGvaFlagValidateRead,
+                    &mut result, &mut gpa,
+                );
+                // ResultCode 0 = Success
+                if hr.is_ok() && result.ResultCode.0 == 0 {
+                    // gpa 是页对齐的，加上页内偏移
+                    Some((gpa & !0xFFF) | (gva & 0xFFF))
+                } else {
+                    None
+                }
+            }
+        }
+
         /// 完成 I/O 指令：推进 RIP 越过指令，可选写回 RAX。
         pub fn complete_io(
             &self, vp_index: u32,
@@ -474,10 +494,12 @@ impl Hypervisor for WhvpBackend {
                         "vcpu_entry not set - call set_vcpu_entry() before run()".into()
                     ))?;
 
-                // 从 guest 物理地址读取指令字节，解码 I/O 指令长度。
-                // early boot 阶段 RIP 是 identity-map 的低物理地址，可直接读 RAM。
-                let decode_io_len = |rip: u64| -> u64 {
-                    if ram_ptr == 0 || rip >= ram_size {
+                // 从 guest RIP 读取指令字节，解码 I/O 指令长度。
+                // RIP 可能是虚拟地址（内核跳到高半区后），需先翻译成物理地址。
+                let decode_io_len = |part: &whvp_impl::WhvpPartition, rip: u64| -> u64 {
+                    // 翻译 GVA → GPA（低地址 identity-map 时翻译结果==rip）
+                    let phys = part.translate_gva(0, rip).unwrap_or(rip);
+                    if ram_ptr == 0 || phys >= ram_size {
                         return 1;
                     }
                     let read = |off: u64| -> u8 {
@@ -487,15 +509,16 @@ impl Hypervisor for WhvpBackend {
                     let mut i = 0u64;
                     let mut len = 0u64;
                     loop {
-                        let b = read(rip + i);
-                        if matches!(b, 0x66 | 0x67 | 0xF0 | 0xF2 | 0xF3) {
+                        let b = read(phys + i);
+                        if matches!(b, 0x66 | 0x67 | 0xF0 | 0xF2 | 0xF3 | 0x40..=0x4F) {
+                            // 前缀（含 REX 0x40-0x4F）
                             i += 1; len += 1;
                             if i > 4 { break; }
                         } else {
                             break;
                         }
                     }
-                    let op = read(rip + i);
+                    let op = read(phys + i);
                     len += match op {
                         0xE4 | 0xE5 | 0xE6 | 0xE7 => 2, // in/out imm8
                         _ => 1,                          // in/out dx (0xEC-0xEF) 及兜底
@@ -563,7 +586,7 @@ impl Hypervisor for WhvpBackend {
                             let mut insn_len = io.InstructionByteCount as u64;
                             if insn_len == 0 {
                                 // WHVP 未解码：自己从 guest RAM 读指令算长度
-                                insn_len = decode_io_len(rip);
+                                insn_len = decode_io_len(partition, rip);
                             }
                             let next_rip = rip + insn_len;
 

@@ -1,14 +1,63 @@
 ---
-pid: 36720
+pid: 25064
 cwd: "D:\Zycrest\Agents\Video-Summary-Bot"
-command: "Set-Location \"D:\\Zycrest\\Agents\\Video-Summary-Bot\"; cargo run -- serve --port 8080 --bind 127.0.0.1"
-started_at: 2026-07-06T19:32:08.442Z
-running_for_ms: 815000   
+command: "Set-Location \"D:\\Zycrest\\Agents\\Video-Summary-Bot\"; powershell -ExecutionPolicy Bypass -File \".\\scripts\\build-installer.ps1\""
+started_at: 2026-07-06T19:36:27.381Z
+running_for_ms: 540001   
 ---
-2026-07-06T19:32:08.834211Z  INFO video_summary_bot::daemon: starting HTTP API + GUI on 127.0.0.1:8080
-warning2026-07-06T19:32:08.835011Z  INFO video_summary_bot::api: serving GUI from gui/web
-2026-07-06T19:32:08.836264Z  INFO video_summary_bot::api: VSB GUI ready → http://127.0.0.1:8080
-: unused import: `delete`
+=== Video Summary Bot Installer Build v0.1.0 ===
+   Compiling futures-sink v0.3.32
+   Compiling thiserror v1.0.69
+   Compiling unicase v2.9.0
+   Compiling time-core v0.1.9
+   Compiling num-conv v0.2.2
+   Compiling cookie v0.18.1
+   Compiling windows-result v0.2.0
+   Compiling windows-implement v0.58.0
+   Compiling windows-interface v0.58.0
+   Compiling tokio v1.52.3
+   Compiling powerfmt v0.2.0
+   Compiling deranged v0.5.8
+   Compiling winnow v0.5.40
+   Compiling webview2-com-macros v0.8.1
+   Compiling toml_datetime v0.6.3
+   Compiling windows-version v0.1.7
+   Compiling raw-window-handle v0.6.2
+   Compiling dpi v0.1.2
+   Compiling http-range-header v0.4.2
+   Compiling wry v0.47.2
+   Compiling crossbeam-channel v0.5.16
+   Compiling instant v0.1.13
+   Compiling unicode-segmentation v1.13.3
+   Compiling dunce v1.0.5
+   Compiling futures-channel v0.3.32
+   Compiling webview2-com-sys v0.33.0
+   Compiling windows-strings v0.1.0
+   Compiling mime_guess v2.0.5
+   Compiling time-macros v0.2.31
+   Compiling futures-util v0.3.32
+   Compiling windows-core v0.58.0
+   Compiling windows v0.58.0
+   Compiling time v0.3.53
+   Compiling toml_edit v0.20.2
+   Compiling axum-core v0.4.5
+   Compiling futures-executor v0.3.32
+   Compiling futures v0.3.32
+   Compiling toml v0.8.2
+   Compiling config v0.14.1
+   Compiling hyper v1.10.1
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tokio-util v0.7.18
+   Compiling tower-http v0.6.11
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.7.9
+   Compiling reqwest v0.12.28
+   Compiling tao v0.30.8
+   Compiling webview2-com v0.33.0
+   Compiling video-summary-bot v0.1.0 (D:\Zycrest\Agents\Video-Summary-Bot)
+warning: unused import: `delete`
   --> src\api\mod.rs:14:15
    |
 14 |     routing::{delete, get, post},
@@ -21,6 +70,12 @@ warning: unused import: `Error`
    |
 39 | use crate::error::{Error, Result};
    |                    ^^^^^
+
+warning: unused import: `Error`
+ --> src\gui\mod.rs:6:20
+  |
+6 | use crate::error::{Error, Result};
+  |                    ^^^^^
 
 warning: unused import: `std::sync::Arc`
   --> src\hypervisor\windows.rs:10:5
@@ -57,6 +112,22 @@ warning: unused import: `crate::ipc::serial_path`
    |
 14 | use crate::ipc::serial_path;
    |     ^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unreachable expression
+  --> src\gui\desktop.rs:48:5
+   |
+37 | /     event_loop.run(move |event, _, control_flow| {
+38 | |         *control_flow = ControlFlow::Wait;
+39 | |         if let Event::WindowEvent {
+40 | |             event: WindowEvent::CloseRequested,
+...  |
+46 | |     });
+   | |______- any code following this expression is unreachable
+47 |
+48 |       Ok(0)
+   |       ^^^^^ unreachable expression
+   |
+   = note: `#[warn(unreachable_code)]` (part of `#[warn(unused)]`) on by default
 
 warning: unused variable: `queues`
   --> src\devices\virtio_console.rs:89:38
@@ -336,6 +407,12 @@ warning: missing documentation for a struct field
    |
 27 |     pub vms: Arc<VmStore>,
    |     ^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a function
+  --> src\cli\gui.rs:21:1
+   |
+21 | pub async fn run(cmd: GuiCmd, _config: &AppConfig) -> Result<i32> {
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 warning: missing documentation for a method
   --> src\cli\summary.rs:23:5
@@ -1038,6 +1115,18 @@ warning: missing documentation for a method
    |
 21 |     pub fn device_type(&self) -> VirtioDeviceType {
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src\gui\mod.rs:11:5
+   |
+11 |     pub width: u32,
+   |     ^^^^^^^^^^^^^^
+
+warning: missing documentation for a struct field
+  --> src\gui\mod.rs:12:5
+   |
+12 |     pub height: u32,
+   |     ^^^^^^^^^^^^^^^
 
 warning: missing documentation for a struct field
   --> src\hypervisor\mod.rs:26:5
@@ -1843,7 +1932,16 @@ warning: missing documentation for a struct field
 55 |     FailEntry { code: u32 },
    |                 ^^^^^^^^^
 
-warning: `video-summary-bot` (lib) generated 302 warnings (run `cargo fix --lib -p video-summary-bot` to apply 31 suggestions)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.18s
-     Running `target\debug\video-summary-bot.exe serve --port 8080 --bind 127.0.0.1`
-error: process didn't exit successfully: `target\debug\video-summary-bot.exe serve --port 8080 --bind 127.0.0.1` (exit code: 0xffffffff)
+warning: `video-summary-bot` (lib) generated 307 warnings (run `cargo fix --lib -p video-summary-bot` to apply 32 suggestions)
+    Finished
+[2/4] staging files ... `release` profile [optimized] target(s) in 59.88s
+
+Inno Setup not found, trying winget install ...
+winget : �޷�����winget����ʶ��Ϊ cmdlet���������ű��ļ�������г�������ơ��������Ƶ�ƴд���������·������ȷ��·����ȷ��
+Ȼ������һ�Ρ�
+����λ�� D:\Zycrest\Agents\Video-Summary-Bot\scripts\build-installer.ps1:52 �ַ�: 5
++     winget install --id JRSoftware.InnoSetup -e --accept-package-agre ...
++     ~~~~~~
+    + CategoryInfo          : ObjectNotFound: (winget:String) [], ParentContainsErrorRecordException
+    + FullyQualifiedErrorId : CommandNotFoundException
+ 

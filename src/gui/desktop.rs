@@ -20,7 +20,7 @@ pub fn run(opts: DesktopOpts) -> Result<i32> {
     let url = format!("http://127.0.0.1:{port}");
     tracing::info!("desktop GUI loading {url}");
 
-    let event_loop = EventLoop::new().map_err(|e| Error::Cli(format!("event loop: {e}")))?;
+    let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Video Summary Bot — VM Manager")
         .with_inner_size(LogicalSize::new(opts.width, opts.height))
