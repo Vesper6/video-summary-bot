@@ -79,19 +79,22 @@ impl Vmm {
             self.config.memory_mb,
         )?;
 
-        // 写 GDT
+        // 写 GDT + identity-map 页表（long mode 必需）
         write_gdt(&self.ram)?;
+        crate::vmm::loader::write_page_tables(&self.ram)?;
 
+        // 使用 64-bit 入口（保护模式内核代码 + 0x200）
+        let entry_64 = crate::vmm::loader::KERNEL_ENTRY_64;
         let regs = InitialRegs::for_linux_64(
-            result.kernel_entry,
+            entry_64,
             result.boot_params_addr,
             self.config.memory_mb,
         );
 
         tracing::info!(
-            "VM '{}' loaded: kernel={:#x} boot_params={:#x} initrd={:?}",
+            "VM '{}' loaded: kernel_entry={:#x} boot_params={:#x} initrd={:?}",
             self.config.name,
-            result.kernel_entry,
+            entry_64,
             result.boot_params_addr,
             result.initrd_addr,
         );

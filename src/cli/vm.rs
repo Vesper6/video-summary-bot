@@ -141,7 +141,7 @@ pub struct BootCmd {
     pub rootfs: Option<std::path::PathBuf>,
 
     /// 内核命令行
-    #[arg(long, default_value = "console=hvc0 root=/dev/vda rw init=/etc/init.d/rcS")]
+    #[arg(long, default_value = "earlyprintk=ttyS0,115200 console=ttyS0,115200 root=/dev/vda rw init=/etc/init.d/rcS")]
     pub cmdline: String,
 
     /// 退出时停止 VM
@@ -305,10 +305,38 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!("🚀 启动 vCPU...");
     let hv = crate::hypervisor::create()?;
     hv.create_vm(&vmm.config).await?;
+
+    // 8. 把 Guest RAM 映射到 hypervisor partition
+    println!("🔗 映射 Guest RAM → hypervisor partition...");
+    let ram_ptr = vmm.ram.raw_ptr();
+    let ram_size = vmm.ram.size() as u64;
+    println!("   HVA={:p}, GPA=0x0..{:#x} ({} MB)",
+        ram_ptr, ram_size, ram_size / 1024 / 1024);
+
+    match hv.map_ram(ram_ptr, 0, ram_size) {
+        Ok(()) => println!("   ✓ RAM 映射成功！vCPU 可以访问内核了"),
+        Err(e) => {
+            eprintln!("   ⚠️  RAM 映射失败: {e}");
+            eprintln!("   vCPU 会因无法访问内存立即 exit");
+        }
+    }
+
+    // 9. 设置 vCPU 0 的 long-mode 入口状态
+    println!("⚙️  设置 vCPU long-mode 入口状态...");
+    let gdt_base = crate::vmm::loader::GDT_ADDR;
+    let gdt_limit = (crate::vmm::loader::GDT_ENTRIES * 8 - 1) as u16;
+    hv.set_vcpu_entry(
+        regs.rip, regs.rsp, regs.rsi,
+        regs.cr0, regs.cr3, regs.cr4, regs.efer,
+        gdt_base, gdt_limit,
+    )?;
+    println!("   ✓ RIP={:#x} RSP={:#x} CR3={:#x} EFER={:#x}",
+        regs.rip, regs.rsp, regs.cr3, regs.efer);
+
     hv.start().await?;
 
     println!("⏳ 正在运行 vCPU（最多 {} 步）...", 1000);
-    println!("   （要看到 Linux kernel banner 还需要把 Guest RAM 映射到 hypervisor）");
+    println!("   期望: 看到 Linux kernel 解压 banner 或 # prompt");
     println!();
 
     // 限时运行
@@ -340,6 +368,7 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!("  ✅ VMM 实例创建");
     println!("  ✅ 内核 + initrd + GDT + boot_params 加载到 Guest RAM");
     println!("  ✅ Hypervisor partition/VM 创建");
+    println!("  ✅ Guest RAM 映射到 partition");
     println!("  ✅ vCPU 启动 + 初始寄存器");
     println!("  ⏳ 完整 vCPU run loop（exit reason 分发）");
     println!("  ⏳ Linux kernel banner 显示");

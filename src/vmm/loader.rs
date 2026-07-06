@@ -37,6 +37,21 @@ pub const KERNEL_ADDR: u64     = 0x0010_0000;
 /// initrd 默认加载地址（内存顶 - 32MB）
 pub const INITRD_ADDR_HINT: u64 = 0x0400_0000; // 64MB 处，避让内核
 
+/// 64-bit 入口偏移：bzImage 保护模式代码 + 0x200 是 64-bit 入口点
+/// （见 Documentation/x86/boot.rst §64-bit BOOT PROTOCOL）
+pub const KERNEL_ENTRY_64: u64 = KERNEL_ADDR + 0x200;
+
+// 页表位置（identity-map 前 4GB，用 2MB 大页）
+// 放在 0x30000 区域，避开 GDT(0x5000)/boot_params(0x7000)/cmdline(0x20000)/kernel(0x100000)
+/// PML4（顶层页表）
+pub const PML4_ADDR: u64 = 0x0003_0000;
+/// PDPT（第 3 级，4 个有效项 → 4 个 PD）
+pub const PDPT_ADDR: u64 = 0x0003_1000;
+/// PD 起始地址（4 个 PD，每个 512 × 2MB = 1GB，共 4GB）
+pub const PD_ADDR:   u64 = 0x0003_2000;
+/// identity-map 覆盖的 GB 数
+pub const IDENTITY_MAP_GB: u64 = 4;
+
 /// 内核魔数（setup_header.boot_flag）
 const BOOT_FLAG: u16 = 0xAA55;
 /// setup_header.header 字段魔数
@@ -289,25 +304,16 @@ impl KernelLoader {
         ram.write(CMDLINE_ADDR, &cmdline_bytes)?;
         tracing::debug!("cmdline → GPA {:#x}: {:?}", CMDLINE_ADDR, cmdline);
 
-        // ── 6. 填写 boot_params ──────────────────
-        let bp = build_boot_params(
-            &bzimg.hdr,
+        // ── 6. 填写 boot_params（原始字节方式，保证偏移正确）──
+        let bp_bytes = build_boot_params_bytes(
+            &kernel_bytes,
+            bzimg.setup_size,
             ram_size_mb,
             initrd_addr,
             initrd_size,
         );
-
-        // boot_params 是 2KB 结构，逐字段写（避免 packed 对齐问题）
-        let bp_bytes = unsafe {
-            std::slice::from_raw_parts(
-                &bp as *const BootParams as *const u8,
-                std::mem::size_of::<BootParams>(),
-            )
-        };
-        // BootParams 可能 > 2KB，只写前 2KB（e820_table 起点后）
-        let write_size = bp_bytes.len().min(0x1000);
-        ram.write(BOOT_PARAMS_ADDR, &bp_bytes[..write_size])?;
-        tracing::debug!("boot_params → GPA {:#x} ({} bytes)", BOOT_PARAMS_ADDR, write_size);
+        ram.write(BOOT_PARAMS_ADDR, &bp_bytes)?;
+        tracing::debug!("boot_params → GPA {:#x} ({} bytes)", BOOT_PARAMS_ADDR, bp_bytes.len());
 
         let kernel_entry = KERNEL_ADDR;
         tracing::info!("kernel entry: GPA {:#x}", kernel_entry);
@@ -340,92 +346,109 @@ impl KernelLoader {
 // boot_params 构建
 // =============================================
 
-fn build_boot_params(
-    hdr:          &SetupHeader,
+/// zero-page 内 setup_header 的绝对偏移量（Linux boot protocol 固定值）。
+mod zp {
+    pub const HDR_START:        usize = 0x1F1; // setup_header 起点
+    pub const TYPE_OF_LOADER:   usize = 0x210;
+    pub const LOADFLAGS:        usize = 0x211;
+    pub const RAMDISK_IMAGE:    usize = 0x218;
+    pub const RAMDISK_SIZE:     usize = 0x21C;
+    pub const HEAP_END_PTR:     usize = 0x224;
+    pub const CMD_LINE_PTR:     usize = 0x228;
+    pub const E820_ENTRIES:     usize = 0x1E8;
+    pub const E820_TABLE:       usize = 0x2D0; // 每项 20 字节 (u64 addr, u64 size, u32 type)
+}
+
+/// 用原始字节构建 zero-page（4KB），保证所有字段落在正确的绝对偏移。
+///
+/// 做法（参考 firecracker / crosvm）：
+/// 1. 从 bzImage 复制 setup_header 原始字节（file 0x1F1..setup_size 内）到 zp[0x1F1..]
+/// 2. 按绝对偏移 patch VMM 需要设置的字段
+/// 3. 写入 e820 表
+fn build_boot_params_bytes(
+    kernel_bytes: &[u8],
+    setup_size:   usize,
     ram_size_mb:  u32,
     initrd_addr:  Option<u64>,
     initrd_size:  u32,
-) -> BootParams {
+) -> Vec<u8> {
     let ram_size_bytes = ram_size_mb as u64 * 1024 * 1024;
+    let mut zp = vec![0u8; 0x1000]; // 4KB zero page
 
-    // 复制 setup_header，填写 VMM 字段
-    let mut new_hdr = *hdr;
-    new_hdr.type_of_loader = 0xFF;         // 未知 bootloader
-    new_hdr.loadflags     |= 0x01;         // LOADED_HIGH: kernel at 1MB+
-    new_hdr.cmd_line_ptr   = CMDLINE_ADDR as u32;
-    new_hdr.heap_end_ptr   = 0xFE00;       // setup heap end
-    new_hdr.loadflags     |= 0x80;         // CAN_USE_HEAP
+    // 1. 复制 setup_header 原始字节：bzImage[0x1F1 .. min(0x268, setup_size)]
+    //    setup_header 最长到约 0x268（含 handover_offset），足够覆盖 init_size(0x260)
+    let hdr_end = 0x268.min(setup_size);
+    if kernel_bytes.len() >= hdr_end && hdr_end > zp::HDR_START {
+        zp[zp::HDR_START..hdr_end]
+            .copy_from_slice(&kernel_bytes[zp::HDR_START..hdr_end]);
+    }
+
+    // 2. patch VMM 字段（绝对偏移）
+    let put_u8  = |zp: &mut [u8], off: usize, v: u8|  zp[off] = v;
+    let put_u16 = |zp: &mut [u8], off: usize, v: u16| zp[off..off+2].copy_from_slice(&v.to_le_bytes());
+    let put_u32 = |zp: &mut [u8], off: usize, v: u32| zp[off..off+4].copy_from_slice(&v.to_le_bytes());
+
+    put_u8(&mut zp, zp::TYPE_OF_LOADER, 0xFF); // 未知 bootloader
+
+    // loadflags: |= LOADED_HIGH(0x01) | CAN_USE_HEAP(0x80)
+    let loadflags = zp[zp::LOADFLAGS] | 0x01 | 0x80;
+    put_u8(&mut zp, zp::LOADFLAGS, loadflags);
+
+    put_u16(&mut zp, zp::HEAP_END_PTR, 0xFE00);
+    put_u32(&mut zp, zp::CMD_LINE_PTR, CMDLINE_ADDR as u32);
 
     if let Some(addr) = initrd_addr {
-        new_hdr.ramdisk_image = addr as u32;
-        new_hdr.ramdisk_size  = initrd_size;
+        put_u32(&mut zp, zp::RAMDISK_IMAGE, addr as u32);
+        put_u32(&mut zp, zp::RAMDISK_SIZE, initrd_size);
     }
 
-    // 创建 zero page（全零初始化）
-    // SAFETY: BootParams 是 POD，零初始化合法
-    let mut bp: BootParams = unsafe { std::mem::zeroed() };
-    bp.hdr = new_hdr;
-
-    // 填写 e820 内存图（参考 tenbox vm.cpp）
-    let mut e820_count = 0u8;
-
-    // 低 640KB RAM (0x0000_0000 - 0x0009_FFFF)
-    bp.e820_table[0] = E820Entry {
-        addr:     0x0000_0000,
-        size:     0x0009_F000,
-        e820type: E820Type::Ram as u32,
-    };
-    e820_count += 1;
-
-    // ISA 保留区域 (0x000A_0000 - 0x000F_FFFF)
-    bp.e820_table[1] = E820Entry {
-        addr:     0x000A_0000,
-        size:     0x0006_0000,
-        e820type: E820Type::Reserved as u32,
-    };
-    e820_count += 1;
-
-    // 主 RAM (1MB - 顶端)
-    let main_ram_base: u64 = 0x0010_0000;
-    let main_ram_size: u64 = ram_size_bytes.saturating_sub(main_ram_base);
-    if main_ram_size > 0 {
-        bp.e820_table[2] = E820Entry {
-            addr:     main_ram_base,
-            size:     main_ram_size,
-            e820type: E820Type::Ram as u32,
-        };
-        e820_count += 1;
+    // 3. e820 内存图
+    let mut entries: Vec<(u64, u64, u32)> = Vec::new();
+    entries.push((0x0000_0000, 0x0009_F000, E820Type::Ram as u32));      // 低 640KB
+    entries.push((0x000A_0000, 0x0006_0000, E820Type::Reserved as u32)); // ISA hole
+    let main_base = 0x0010_0000u64;
+    let main_size = ram_size_bytes.saturating_sub(main_base);
+    if main_size > 0 {
+        entries.push((main_base, main_size, E820Type::Ram as u32));      // 1MB+
     }
 
-    bp.e820_table_count = e820_count;
+    put_u8(&mut zp, zp::E820_ENTRIES, entries.len() as u8);
+    for (i, (addr, size, typ)) in entries.iter().enumerate() {
+        let off = zp::E820_TABLE + i * 20;
+        zp[off..off+8].copy_from_slice(&addr.to_le_bytes());
+        zp[off+8..off+16].copy_from_slice(&size.to_le_bytes());
+        zp[off+16..off+20].copy_from_slice(&typ.to_le_bytes());
+    }
 
     tracing::debug!(
-        "e820: {} entries, RAM={} MB",
-        e820_count,
-        ram_size_bytes / 1024 / 1024
+        "zero-page built: {} e820 entries, RAM={} MB, hdr copied [{:#x}..{:#x}]",
+        entries.len(), ram_size_mb, zp::HDR_START, hdr_end
     );
 
-    bp
+    zp
 }
 
 // =============================================
 // 初始 vCPU 寄存器（x86 保护模式）
 // =============================================
 
-/// 初始 vCPU 寄存器值（参考 tenbox whvp_vm.cpp set_initial_regs）。
+/// 初始 vCPU 寄存器值（64-bit long mode，参考 firecracker / tenbox）。
 pub struct InitialRegs {
-    pub rip:    u64,  /// 内核入口
-    pub rsp:    u64,  /// 初始栈（kernel top - 64KB）
-    pub rsi:    u64,  /// boot_params 地址（Linux 启动约定）
+    pub rip:    u64,  // 内核 64-bit 入口
+    pub rsp:    u64,  // 初始栈
+    pub rsi:    u64,  // boot_params 地址（Linux 启动约定）
     pub rflags: u64,
-    pub cr0:    u64,  /// PE=1（保护模式）
-    pub cr3:    u64,  /// 页表（先置 0，内核自己设置）
-    pub cr4:    u64,
-    pub efer:   u64,  // Long mode enable (IA32_EFER.LME)
+    pub cr0:    u64,  // PE=1 | PG=1（保护模式 + 分页）
+    pub cr3:    u64,  // 指向 PML4
+    pub cr4:    u64,  // PAE=1
+    pub efer:   u64,  // LME=1 | LMA=1（long mode active）
 }
 
 impl InitialRegs {
     /// 为 64-bit Linux 启动生成初始寄存器值。
+    ///
+    /// 进入 long mode 需要：CR0.PE=1 & CR0.PG=1，CR4.PAE=1，
+    /// EFER.LME=1（硬件在开分页时置 LMA），CR3 指向 identity-map 页表。
     pub fn for_linux_64(
         kernel_entry:    u64,
         boot_params_gpa: u64,
@@ -436,40 +459,83 @@ impl InitialRegs {
             rip:    kernel_entry,
             rsi:    boot_params_gpa,           // Linux boot 约定：RSI = boot_params
             rsp:    ram_top.saturating_sub(0x1_0000), // 初始栈
-            rflags: 0x0000_0002,               // 保留位
-            cr0:    0x0000_0011,               // PE=1, ET=1（保护模式，不开分页）
-            cr3:    0,
-            cr4:    0x0000_0020,               // PAE=1
-            efer:   0x0000_0100,               // LME=1（Long Mode Enable）
+            rflags: 0x0000_0002,               // 保留位（bit1 恒为 1）
+            cr0:    0x8000_0011,               // PG=1(bit31) | ET=1(bit4) | PE=1(bit0)
+            cr3:    PML4_ADDR,                  // 指向 identity-map 页表
+            cr4:    0x0000_0020,               // PAE=1(bit5)
+            efer:   0x0000_0500,               // LMA=1(bit10) | LME=1(bit8)
         }
     }
 }
 
 // =============================================
-// GDT 初始化（tenbox 兼容）
+// GDT 初始化（64-bit long mode，参考 tenbox / firecracker）
 // =============================================
 
-/// GDT 段描述符（64-bit flat）。
+/// GDT 段描述符。布局遵循 Linux 64-bit boot protocol：
+/// index 0=null, 1=null(unused), 2=__BOOT_CS(0x10), 3=__BOOT_DS(0x18)。
+/// 见 Documentation/x86/boot.rst："GDT must have __BOOT_CS(0x10) and __BOOT_DS(0x18)"
 const GDT_NULL:   u64 = 0x0000_0000_0000_0000;
-const GDT_CODE64: u64 = 0x00AF_9A00_0000_FFFF; // 64-bit code, DPL0, present
-const GDT_DATA64: u64 = 0x00CF_9200_0000_FFFF; // 64-bit data, DPL0, present
+/// 64-bit code：P=1 DPL=0 S=1 Type=Execute/Read, L=1（long mode）, G=1
+const GDT_CODE64: u64 = 0x00AF_9B00_0000_FFFF;
+/// 64-bit data：P=1 DPL=0 S=1 Type=Read/Write, G=1, D/B=1
+const GDT_DATA64: u64 = 0x00CF_9300_0000_FFFF;
 
-/// GDT 加载地址（参考 tenbox）
+/// GDT 加载地址
 pub const GDT_ADDR: u64 = 0x0000_5000;
+/// __BOOT_CS 选择子（GDT index 2）
+pub const SEL_CODE64: u16 = 0x10;
+/// __BOOT_DS 选择子（GDT index 3）
+pub const SEL_DATA64: u16 = 0x18;
+/// GDT 项数
+pub const GDT_ENTRIES: usize = 4;
 
 /// 把 GDT 写入客户机内存，返回 GDT base + limit。
 pub fn write_gdt(ram: &GuestRam) -> Result<(u64, u16)> {
-    let gdt: [u64; 3] = [GDT_NULL, GDT_CODE64, GDT_DATA64];
+    // index: 0=null 1=null 2=code(0x10) 3=data(0x18)
+    let gdt: [u64; GDT_ENTRIES] = [GDT_NULL, GDT_NULL, GDT_CODE64, GDT_DATA64];
     let gdt_bytes = unsafe {
-        std::slice::from_raw_parts(
-            gdt.as_ptr() as *const u8,
-            gdt.len() * 8,
-        )
+        std::slice::from_raw_parts(gdt.as_ptr() as *const u8, gdt.len() * 8)
     };
     ram.write(GDT_ADDR, gdt_bytes)?;
     let limit = (gdt.len() * 8 - 1) as u16;
     tracing::debug!("GDT written at GPA {:#x}, limit={:#x}", GDT_ADDR, limit);
     Ok((GDT_ADDR, limit))
+}
+
+/// 写入 identity-map 页表（前 4GB，2MB 大页），供 long mode 使用。
+///
+/// 布局：
+/// - PML4[0] → PDPT
+/// - PDPT[0..4] → PD0..PD3（每个覆盖 1GB）
+/// - PDi[0..512] → 每个 2MB 大页
+pub fn write_page_tables(ram: &GuestRam) -> Result<()> {
+    // 页表项标志：P(present)=1, RW=1
+    const PTE_P_RW: u64 = 0x3;
+    // 2MB 大页额外需要 PS(page size)=1（bit 7）
+    const PTE_PS: u64 = 0x80;
+
+    // PML4[0] → PDPT
+    ram.write(PML4_ADDR, &(PDPT_ADDR | PTE_P_RW).to_le_bytes())?;
+
+    // PDPT[0..N] → PD0..PDN（每个 PD 覆盖 1GB）
+    for g in 0..IDENTITY_MAP_GB {
+        let pd_addr = PD_ADDR + g * 0x1000;
+        ram.write(PDPT_ADDR + g * 8, &(pd_addr | PTE_P_RW).to_le_bytes())?;
+
+        // 每个 PD 有 512 项，每项映射一个 2MB 大页
+        for i in 0..512u64 {
+            let phys = g * 0x4000_0000 + i * 0x20_0000; // 1GB*g + 2MB*i
+            let entry = phys | PTE_P_RW | PTE_PS;
+            ram.write(pd_addr + i * 8, &entry.to_le_bytes())?;
+        }
+    }
+
+    tracing::debug!(
+        "page tables written: PML4@{:#x} PDPT@{:#x} PD@{:#x} (identity-map 0..{}GB)",
+        PML4_ADDR, PDPT_ADDR, PD_ADDR, IDENTITY_MAP_GB
+    );
+    Ok(())
 }
 
 // =============================================

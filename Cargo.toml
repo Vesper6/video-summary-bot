@@ -31,10 +31,12 @@ futures = "0.3"
 async-trait = "0.1"
 
 # HTTP 客户端（axum 服务端和 reqwest 客户端都依赖 hyper）
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+tao = { version = "0.30", optional = true, default-features = true }
+wry = { version = "0.47", optional = true, default-features = true }
 axum = "0.7"
 tower = "0.5"
-tower-http = { version = "0.6", features = ["trace", "cors"] }
+tower-http = { version = "0.6", features = ["trace", "cors", "fs"] }
 
 # 序列化
 serde = { version = "1.0", features = ["derive"] }
@@ -133,6 +135,9 @@ default = []
 
 # 启用 HTTP API
 api = []
+
+# 启用桌面 GUI（原生窗口，tao + wry WebView2）
+gui = ["dep:tao", "dep:wry"]
 
 # 启用 Windows WHVP 后端（Windows 上推荐）
 whvp = ["dep:windows"]

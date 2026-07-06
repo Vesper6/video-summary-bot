@@ -20,12 +20,14 @@
 #![warn(rust_2018_idioms)]
 
 pub mod agents;
+pub mod api;
 pub mod cli;
 pub mod config;
 pub mod crawler;
 pub mod daemon;
 pub mod devices;
 pub mod error;
+pub mod gui;
 pub mod hypervisor;
 pub mod image;
 pub mod ipc;

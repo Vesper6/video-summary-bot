@@ -466,4 +466,28 @@ impl Hypervisor for KvmBackend {
         #[cfg(not(all(target_os = "linux", feature = "kvm")))]
         Err(Error::Vmm("KVM not available".into()))
     }
+
+    fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
+        #[cfg(all(target_os = "linux", feature = "kvm"))]
+        {
+            // KVM: KVM_SET_USER_MEMORY_REGION 已由 KvmVm::create 在 slot 0 注册
+            // 后续区域可以通过 VmFd::set_user_memory_region 添加
+            Err(Error::Vmm(
+                "KVM map_ram: use slot-based registration via KvmVm::create".into(),
+            ))
+        }
+        #[cfg(not(all(target_os = "linux", feature = "kvm")))]
+        Err(Error::Vmm("KVM not available".into()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_vcpu_entry(
+        &self,
+        _rip: u64, _rsp: u64, _rsi: u64,
+        _cr0: u64, _cr3: u64, _cr4: u64, _efer: u64,
+        _gdt_base: u64, _gdt_limit: u16,
+    ) -> Result<()> {
+        // KVM: 通过 VcpuFd::set_sregs / set_regs 设置，待实现
+        Err(Error::Vmm("KVM set_vcpu_entry not yet implemented".into()))
+    }
 }

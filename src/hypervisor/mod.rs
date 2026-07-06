@@ -85,6 +85,25 @@ pub trait Hypervisor: Send + Sync {
     /// 阻塞运行直到 VM 退出，返回退出码。
     async fn run(&self) -> Result<i32>;
 
+    /// 把宿主 RAM 映射到客户机物理地址空间。
+    fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()>;
+
+    /// 设置 vCPU 0 的完整 long-mode 入口状态。
+    /// 必须在 `create_vm()` 之后、`run()` 之前调用。
+    #[allow(clippy::too_many_arguments)]
+    fn set_vcpu_entry(
+        &self,
+        rip: u64,
+        rsp: u64,
+        rsi: u64,
+        cr0: u64,
+        cr3: u64,
+        cr4: u64,
+        efer: u64,
+        gdt_base: u64,
+        gdt_limit: u16,
+    ) -> Result<()>;
+
     /// 后端名称。
     fn backend_name(&self) -> &'static str;
 }

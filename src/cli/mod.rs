@@ -6,7 +6,9 @@
 //! - `vsb summarize --url ...`
 //! - `vsb daemon start/stop/status`
 //! - `vsb serve --port ...`
+//! - `vsb gui`（桌面应用）
 
+pub mod gui;
 pub mod summary;
 pub mod system;
 pub mod vm;
@@ -76,8 +78,11 @@ pub enum Command {
     #[command(subcommand)]
     Daemon(crate::daemon::DaemonCmd),
 
-    /// 启动 HTTP API 服务
+    /// 启动 HTTP API 服务（调试）
     Serve(crate::daemon::ServeCmd),
+
+    /// 启动桌面 GUI（原生窗口应用）
+    Gui(gui::GuiCmd),
 }
 
 impl Cli {
@@ -100,6 +105,7 @@ pub async fn run(cli: Cli, config: &AppConfig) -> Result<i32> {
         Command::Crawl(cmd) => summary::run_crawl(cmd, config).await,
         Command::Daemon(cmd) => crate::daemon::run(cmd, config).await,
         Command::Serve(cmd) => crate::daemon::run_serve(cmd, config).await,
+        Command::Gui(cmd) => gui::run(cmd, config).await,
     }
 }
 

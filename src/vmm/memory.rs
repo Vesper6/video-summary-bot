@@ -56,6 +56,11 @@ impl GuestRam {
         self.size
     }
 
+    /// 返回宿主虚拟地址起始指针（用于 WHvMapGpaRange 等）。
+    pub fn raw_ptr(&self) -> *mut u8 {
+        self.hva_ptr
+    }
+
     /// 客户机地址 → 宿主指针。
     ///
     /// # Safety

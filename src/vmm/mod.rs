@@ -34,6 +34,12 @@ pub enum VmState {
     Crashed,
 }
 
+impl Default for VmState {
+    fn default() -> Self {
+        VmState::Stopped
+    }
+}
+
 impl VmState {
     pub fn is_running(&self) -> bool {
         matches!(self, VmState::Running)

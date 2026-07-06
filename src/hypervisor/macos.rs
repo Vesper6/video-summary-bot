@@ -57,4 +57,18 @@ impl Hypervisor for HvfBackend {
     async fn run(&self) -> Result<i32> {
         Err(Error::Vmm("HVF run not implemented".into()))
     }
+
+    fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
+        Err(Error::Vmm("HVF map_ram not implemented".into()))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_vcpu_entry(
+        &self,
+        _rip: u64, _rsp: u64, _rsi: u64,
+        _cr0: u64, _cr3: u64, _cr4: u64, _efer: u64,
+        _gdt_base: u64, _gdt_limit: u16,
+    ) -> Result<()> {
+        Err(Error::Vmm("HVF set_vcpu_entry not implemented".into()))
+    }
 }

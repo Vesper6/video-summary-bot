@@ -1,0 +1,7 @@
+---
+pid: 37436
+cwd: "D:\Zycrest\Agents\Video-Summary-Bot"
+command: "Set-Location \"D:\\Zycrest\\Agents\\Video-Summary-Bot\"; cargo build --features gui 2>&1 | Select-String -Pattern \"^error\""
+started_at: 2026-07-06T19:34:46.206Z
+running_for_ms: 0        
+---

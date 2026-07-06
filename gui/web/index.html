@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Video Summary Bot — VM Manager</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app">
+    <header class="titlebar">
+      <div class="titlebar-left">
+        <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='14' font-family='sans-serif' font-weight='bold'%3EV%3C/text%3E%3C/svg%3E" alt="" class="logo" />
+        <span class="app-title">Video Summary Bot</span>
+        <span class="app-subtitle">桌面版 · VM Manager</span>
+      </div>
+      <div class="titlebar-right">
+        <span id="hv-status" class="badge">探测中…</span>
+        <span id="version" class="muted"></span>
+      </div>
+    </header>
+
+    <nav class="menubar">
+      <span class="menu-item">管理</span>
+      <span class="menu-item active">虚拟机</span>
+      <span class="menu-item">视频总结</span>
+      <span class="menu-item">帮助</span>
+    </nav>
+
+    <div class="toolbar">
+      <button class="tb-btn primary" id="btn-new" title="新建虚拟机">
+        <span class="icon">＋</span> 新建虚拟机
+      </button>
+      <button class="tb-btn" id="btn-edit" title="编辑" disabled>✎ 编辑</button>
+      <button class="tb-btn danger" id="btn-delete" title="删除" disabled>🗑 删除</button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn success" id="btn-start" title="启动" disabled>▶ 启动</button>
+      <button class="tb-btn" id="btn-stop" title="停止" disabled>■ 停止</button>
+      <button class="tb-btn" id="btn-reboot" title="重启" disabled>↻ 重启</button>
+      <button class="tb-btn" id="btn-shutdown" title="关机" disabled>⏻ 关机</button>
+      <span class="tb-sep"></span>
+      <button class="tb-btn" id="btn-refresh" title="刷新">⟳ 刷新</button>
+    </div>
+
+    <main class="workspace">
+      <aside class="vm-sidebar">
+        <div class="sidebar-header">虚拟机</div>
+        <ul id="vm-list" class="vm-list"></ul>
+        <div id="vm-empty" class="vm-empty hidden">暂无虚拟机<br><small>点击「新建虚拟机」开始</small></div>
+      </aside>
+
+      <section class="main-panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="info">基本信息</button>
+          <button class="tab" data-tab="console">控制台</button>
+          <button class="tab" data-tab="display">屏幕显示</button>
+        </div>
+
+        <div id="panel-info" class="tab-panel active">
+          <div id="no-selection" class="placeholder">
+            <p>← 从左侧选择一个虚拟机</p>
+          </div>
+          <div id="info-content" class="info-grid hidden">
+            <div class="info-card">
+              <h3>配置</h3>
+              <dl>
+                <dt>名称</dt><dd id="info-name">—</dd>
+                <dt>状态</dt><dd id="info-state">—</dd>
+                <dt>vCPU</dt><dd id="info-cpus">—</dd>
+                <dt>内存</dt><dd id="info-memory">—</dd>
+                <dt>磁盘</dt><dd id="info-disk">—</dd>
+              </dl>
+            </div>
+            <div class="info-card">
+              <h3>启动参数</h3>
+              <pre id="info-cmdline" class="cmdline">—</pre>
+            </div>
+            <div class="info-card wide">
+              <h3>系统健康</h3>
+              <div id="doctor-checks" class="doctor-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <div id="panel-console" class="tab-panel">
+          <div class="console-wrap">
+            <pre id="console-output" class="console">[vsb] 等待 VM 启动…</pre>
+          </div>
+        </div>
+
+        <div id="panel-display" class="tab-panel">
+          <div class="display-placeholder">
+            <div class="display-icon">🖥</div>
+            <h3>远程桌面</h3>
+            <p>参考 TenBox：virtio-gpu + SPICE / WebRTC 显示 Guest 桌面。</p>
+            <p class="muted">当前为 Demo 阶段，屏幕显示尚未接通。VM 启动后可在「控制台」查看串口日志。</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="statusbar">
+      <span id="status-msg">就绪</span>
+      <span class="status-right">Video Summary Bot 桌面应用</span>
+    </footer>
+  </div>
+
+  <dialog id="dlg-create" class="modal">
+    <form method="dialog" id="form-create">
+      <h2>新建虚拟机</h2>
+      <label>名称 <input name="name" required pattern="[A-Za-z0-9_-]+" placeholder="my-agent-vm" /></label>
+      <label>vCPU <input name="cpus" type="number" min="1" max="16" value="2" /></label>
+      <label>内存 (MB) <input name="memory_mb" type="number" min="512" step="512" value="2048" /></label>
+      <label>磁盘 (GB) <input name="disk_gb" type="number" min="1" value="10" /></label>
+      <div class="modal-actions">
+        <button type="button" class="tb-btn" id="btn-cancel-create">取消</button>
+        <button type="submit" class="tb-btn primary">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/app.js"></script>
+</body>
+</html>
