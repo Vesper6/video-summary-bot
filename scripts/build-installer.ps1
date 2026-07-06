@@ -56,16 +56,38 @@ $IsccCandidates = @(
 $Iscc = $IsccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 if (-not $Iscc) {
-    Write-Host "Inno Setup not found, trying winget install ..." -ForegroundColor Yellow
-    winget install --id JRSoftware.InnoSetup -e --accept-package-agreements --accept-source-agreements 2>$null
-    $Iscc = $IsccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    Write-Host "Inno Setup not found, trying winget ..." -ForegroundColor Yellow
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        winget install --id JRSoftware.InnoSetup -e --accept-package-agreements --accept-source-agreements 2>$null
+        $Iscc = $IsccCandidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    }
 }
 
 if (-not $Iscc) {
-    Write-Host "`nERROR: Inno Setup 6 not installed." -ForegroundColor Red
-    Write-Host "Please install from: https://jrsoftware.org/isdl.php" -ForegroundColor Red
-    Write-Host "Then re-run: .\scripts\build-installer.ps1" -ForegroundColor Red
-    Write-Host "`nStaging folder ready at: $Staging" -ForegroundColor Yellow
+    $LocalInno = Join-Path $env:LOCALAPPDATA "Inno Setup 6\ISCC.exe"
+    if (-not (Test-Path $LocalInno)) {
+        Write-Host "Downloading Inno Setup 6 (silent, user-local) ..." -ForegroundColor Yellow
+        $InnoUrl = "https://files.jrsoftware.org/is/innosetup-6.3.3.exe"
+        $InnoInstaller = Join-Path $env:TEMP "innosetup-6.3.3.exe"
+        Invoke-WebRequest -Uri $InnoUrl -OutFile $InnoInstaller -UseBasicParsing
+        $InnoDir = Join-Path $env:LOCALAPPDATA "Inno Setup 6"
+        Start-Process -FilePath $InnoInstaller -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART",
+            "/DIR=`"$InnoDir`""
+        ) -Wait
+        Remove-Item $InnoInstaller -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path $LocalInno) { $Iscc = $LocalInno }
+}
+
+if (-not $Iscc) {
+    # 备选：便携 zip + 安装脚本
+    $ZipPath = Join-Path $OutDir "VideoSummaryBot-Portable-$Version.zip"
+    if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+    Compress-Archive -Path "$Staging\*" -DestinationPath $ZipPath -Force
+    Write-Host "`nWARN: Inno Setup unavailable. Portable zip created:" -ForegroundColor Yellow
+    Write-Host "  $ZipPath" -ForegroundColor Yellow
+    Write-Host "Install Inno Setup from https://jrsoftware.org/isdl.php then re-run this script for .exe installer." -ForegroundColor Yellow
     exit 1
 }
 
