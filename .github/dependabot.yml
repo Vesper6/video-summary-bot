@@ -1,0 +1,85 @@
+# =============================================
+# Video Summary Bot - Dependabot
+# =============================================
+# 自动扫描并创建依赖更新 PR
+# 每周一上午 9:00 (UTC) 运行
+# =============================================
+
+version: 2
+
+updates:
+  # ===========================================
+  # Cargo 依赖
+  # ===========================================
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    # 自动分组：把同类型的依赖合并到同一个 PR
+    groups:
+      tokio:
+        patterns:
+          - "tokio*"
+          - "futures*"
+          - "async-trait*"
+      http:
+        patterns:
+          - "reqwest*"
+          - "axum*"
+          - "tower*"
+          - "tower-http*"
+      serde:
+        patterns:
+          - "serde*"
+          - "toml"
+      cli:
+        patterns:
+          - "clap*"
+      logging:
+        patterns:
+          - "tracing*"
+      config:
+        patterns:
+          - "config*"
+          - "dotenvy*"
+    # PR 数量上限
+    open-pull-requests-limit: 10
+    # 自动提交者
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    # 自动标签
+    labels:
+      - "dependencies"
+      - "cargo"
+    # 忽略的依赖（手动管理）
+    ignore:
+      - dependency-name: "windows"
+        # windows crate 版本更新频繁，可能破坏 API
+      - dependency-name: "hypervisor"
+        # macOS hypervisor crate 版本变化大
+
+  # ===========================================
+  # GitHub Actions
+  # ===========================================
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    commit-message:
+      prefix: "ci"
+    labels:
+      - "dependencies"
+      - "ci"
+    # 自动分组 actions
+    groups:
+      actions:
+        patterns:
+          - "*"

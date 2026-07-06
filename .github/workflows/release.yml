@@ -1,0 +1,203 @@
+# =============================================
+# Video Summary Bot - Release
+# =============================================
+# 触发方式：
+# - 推送以 'v' 开头的 git tag（如 v0.1.0）
+#
+# 行为：
+# - 在 3 平台（Ubuntu / Windows / macOS）构建 release 二进制
+# - 创建 GitHub Release
+# - 上传构建产物
+# - 自动生成 changelog
+# =============================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.0)'
+        required: true
+        default: 'latest'
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+permissions:
+  contents: write
+
+jobs:
+  # ===========================================
+  # 跨平台构建
+  # ===========================================
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: video-summary-bot-linux-x86_64
+            asset_name: video-summary-bot-linux-x86_64
+          # Linux aarch64
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            artifact_name: video-summary-bot-linux-aarch64
+            asset_name: video-summary-bot-linux-aarch64
+          # Windows x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: video-summary-bot-windows-x86_64
+            asset_name: video-summary-bot-windows-x86_64.exe
+          # macOS x86_64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact_name: video-summary-bot-macos-x86_64
+            asset_name: video-summary-bot-macos-x86_64
+          # macOS aarch64 (Apple Silicon)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact_name: video-summary-bot-macos-aarch64
+            asset_name: video-summary-bot-macos-aarch64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build release binary
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: List build artifacts
+        shell: bash
+        run: |
+          ls -la target/${{ matrix.target }}/release/
+
+      - name: Prepare artifact directory
+        shell: bash
+        run: |
+          mkdir -p ${{ matrix.artifact_name }}
+          cp target/${{ matrix.target }}/release/video-summary-bot* ${{ matrix.artifact_name }}/
+          if [ -f README.md ]; then cp README.md ${{ matrix.artifact_name }}/; fi
+          if [ -f LICENSE ]; then cp LICENSE ${{ matrix.artifact_name }}/; fi
+
+      - name: Create archive
+        shell: bash
+        run: |
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            7z a ${{ matrix.artifact_name }}.zip ${{ matrix.artifact_name }}/*
+          else
+            tar -czf ${{ matrix.artifact_name }}.tar.gz ${{ matrix.artifact_name }}/
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: |
+            ${{ matrix.artifact_name }}.*
+          if-no-files-found: error
+          retention-days: 30
+
+  # ===========================================
+  # 发布到 GitHub Releases
+  # ===========================================
+  publish:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List downloaded artifacts
+        run: ls -la artifacts/
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # 从前一个 tag 提取 commit 信息
+          PREV_TAG=$(git tag --sort=-v:refname | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "Generating changelog from $PREV_TAG to ${{ github.ref_name }}"
+          CHANGELOG=$(git log "$PREV_TAG..${{ github.ref_name }}" --pretty=format:"- %s (%h)" --no-merges)
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          draft: true
+          generate_release_notes: true
+          body: |
+            ## Changes
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## Downloads
+
+            Choose the binary for your platform:
+
+            | Platform | Architecture | Download |
+            |----------|--------------|----------|
+            | Linux    | x86_64       | `video-summary-bot-linux-x86_64.tar.gz` |
+            | Linux    | aarch64      | `video-summary-bot-linux-aarch64.tar.gz` |
+            | Windows  | x86_64       | `video-summary-bot-windows-x86_64.zip` |
+            | macOS    | x86_64       | `video-summary-bot-macos-x86_64.tar.gz` |
+            | macOS    | aarch64      | `video-summary-bot-macos-aarch64.tar.gz` |
+
+            ## Verifying
+
+            ```sh
+            # Verify checksums
+            shasum -a 256 -c checksums.txt
+            ```
+          files: |
+            artifacts/**/*.tar.gz
+            artifacts/**/*.zip
+            artifacts/**/checksums.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec sha256sum {} \; > checksums.txt
+          cat checksums.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: artifacts/checksums.txt

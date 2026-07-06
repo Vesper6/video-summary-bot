@@ -1,0 +1,17 @@
+# =============================================
+# Issue 选项配置
+# =============================================
+# 访问 /issues/new 时显示
+# =============================================
+
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 文档
+    url: https://github.com/Vesper6/video-summary-bot/blob/main/README.md
+    about: 阅读 README 和 docs/ 目录
+  - name: 💬 讨论区
+    url: https://github.com/Vesper6/video-summary-bot/discussions
+    about: 在 Discussions 中提问和讨论
+  - name: 🔒 安全问题
+    url: https://github.com/Vesper6/video-summary-bot/security/advisories/new
+    about: 私密报告安全问题（不要在公开 Issue 中提）
