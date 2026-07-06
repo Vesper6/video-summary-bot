@@ -68,6 +68,8 @@ impl VideoText {
 pub struct SubtitleFetcher {
     /// yt-dlp 可执行路径
     ytdlp_path: PathBuf,
+    /// ffmpeg 可执行路径（可选，提升字幕转换质量）
+    ffmpeg_path: Option<PathBuf>,
     /// cookies 文件路径（可选）
     cookies_file: Option<PathBuf>,
     /// 超时（秒）
@@ -78,8 +80,13 @@ impl SubtitleFetcher {
     pub fn new() -> Result<Self> {
         let ytdlp_path = find_ytdlp()?;
         let cookies_file = find_cookies_file();
+        let ffmpeg_path = find_ffmpeg();
+        if let Some(ref p) = ffmpeg_path {
+            tracing::debug!("ffmpeg found at: {}", p.display());
+        }
         Ok(Self {
             ytdlp_path,
+            ffmpeg_path,
             cookies_file,
             timeout_secs: 60,
         })
@@ -171,7 +178,7 @@ impl SubtitleFetcher {
         Ok(sub_text)
     }
 
-    /// 构建基础命令（注入 cookies）。
+    /// 构建基础命令（注入 cookies + ffmpeg）。
     fn base_cmd(&self) -> tokio::process::Command {
         let mut cmd = tokio::process::Command::new(&self.ytdlp_path);
         cmd.stdout(Stdio::piped())
@@ -180,6 +187,9 @@ impl SubtitleFetcher {
 
         if let Some(cookies) = &self.cookies_file {
             cmd.arg("--cookies").arg(cookies);
+        }
+        if let Some(ffmpeg) = &self.ffmpeg_path {
+            cmd.arg("--ffmpeg-location").arg(ffmpeg.parent().unwrap_or(ffmpeg));
         }
         cmd
     }
@@ -428,4 +438,28 @@ fn detect_platform(url: &str) -> String {
     } else {
         "未知平台".to_string()
     }
+}
+
+/// 查找 ffmpeg 可执行文件。
+fn find_ffmpeg() -> Option<PathBuf> {
+    let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+
+    // PATH 查找
+    if let Some(p) = which(exe) {
+        return Some(p);
+    }
+    // Windows 常见路径
+    let candidates = [
+        "D:/software/ffmpeg-8.1-full_build/bin/ffmpeg.exe",
+        "D:/software/EVCapture/ffmpeg.exe",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+    ];
+    for c in candidates {
+        let p = Path::new(c);
+        if p.exists() {
+            return Some(p.to_path_buf());
+        }
+    }
+    None
 }
