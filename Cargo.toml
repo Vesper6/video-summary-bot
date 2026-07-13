@@ -48,7 +48,7 @@ toml = "0.8"
 clap = { version = "4.5", features = ["derive", "env"] }
 
 # 配置
-config = { version = "0.14", default-features = false, features = ["toml", "yaml"] }
+config = { version = "0.15", default-features = false, features = ["toml", "yaml"] }
 dotenvy = "0.15"
 
 # 日志
