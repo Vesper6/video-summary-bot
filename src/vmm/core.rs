@@ -11,7 +11,6 @@ use parking_lot::RwLock;
 
 use crate::devices::{VirtioMmioBus, VirtioConsole};
 use crate::error::{Error, Result};
-use crate::ipc::serial_path;
 use crate::vmm::{VmConfig, VmState};
 use crate::vmm::loader::{KernelLoader, InitialRegs, write_gdt};
 use crate::vmm::memory::GuestRam;
@@ -24,6 +23,7 @@ use crate::vmm::memory::GuestRam;
 /// - VirtioMmioBus（所有 VirtIO 设备）
 /// - VmState（可变）
 pub struct Vmm {
+    /// VM 配置（不可变）
     pub config: VmConfig,
     state: RwLock<VmState>,
     /// 客户机 RAM（页对齐，已映射）
@@ -54,7 +54,7 @@ impl Vmm {
         Ok(Self {
             config,
             state: RwLock::new(VmState::Created),
-            ram: ram,
+            ram,
             mmio_bus: Arc::new(parking_lot::Mutex::new(bus)),
             console,
             guest_output_rx: Arc::new(tokio::sync::Mutex::new(guest_output_rx)),
@@ -102,14 +102,17 @@ impl Vmm {
         Ok(regs)
     }
 
+    /// 当前 VM 状态。
     pub fn state(&self) -> VmState {
         *self.state.read()
     }
 
+    /// 设置 VM 状态。
     pub fn set_state(&self, s: VmState) {
         *self.state.write() = s;
     }
 
+    /// VM 名称。
     pub fn name(&self) -> &str {
         &self.config.name
     }
@@ -119,6 +122,7 @@ impl Vmm {
         self.mmio_bus.lock().read(gpa, size)
     }
 
+    /// 处理 MMIO 写 exit（从 WHVP/KVM run loop 调用）。
     pub fn handle_mmio_write(&self, gpa: u64, value: u32, size: u8) -> bool {
         self.mmio_bus.lock().write(gpa, value, size)
     }

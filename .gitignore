@@ -71,4 +71,5 @@ coverage/
 dist/
 build/
 *.tar.gz
-*.zipterminals/
+*.zip
+terminals/

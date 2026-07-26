@@ -11,7 +11,7 @@ use axum::{
     Router,
     body::Body,
     extract::{Request, State},
-    http::{HeaderMap, HeaderValue, StatusCode},
+    http::{HeaderValue, StatusCode},
     response::Response,
     routing::any,
 };

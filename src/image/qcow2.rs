@@ -14,16 +14,19 @@ use crate::image::{DiskImage, ImageFormat};
 
 /// qcow2 镜像（占位）。
 pub struct Qcow2Image {
+    #[allow(dead_code)] // qcow2 读写实现接通后使用
     path: std::path::PathBuf,
     capacity: u64,
 }
 
 impl Qcow2Image {
+    /// 创建 qcow2 镜像（尚未实现）。
     pub fn create(_path: &Path, _size_bytes: u64) -> Result<Self> {
         // TODO: 写 qcow2 header + L1/L2 table
         Err(Error::Image("qcow2 create not implemented yet".into()))
     }
 
+    /// 打开已有 qcow2 镜像（尚未实现）。
     pub fn open(path: &Path) -> Result<Self> {
         // TODO: 解析 qcow2 header
         Err(Error::Image(format!(

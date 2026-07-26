@@ -292,6 +292,7 @@ struct KvmState {
     vm_state: VmState,
 }
 
+/// Linux KVM 后端。
 pub struct KvmBackend {
     #[cfg(all(target_os = "linux", feature = "kvm"))]
     state: Arc<RwLock<KvmState>>,
@@ -300,6 +301,7 @@ pub struct KvmBackend {
 }
 
 impl KvmBackend {
+    /// 打开 /dev/kvm 并创建后端（需要 `kvm` feature）。
     pub fn new() -> Result<Self> {
         #[cfg(all(target_os = "linux", feature = "kvm"))]
         {
@@ -387,7 +389,7 @@ impl Hypervisor for KvmBackend {
         "KVM"
     }
 
-    async fn create_vm(&self, config: &VmConfig) -> Result<()> {
+    async fn create_vm(&self, _config: &VmConfig) -> Result<()> {
         #[cfg(all(target_os = "linux", feature = "kvm"))]
         {
             let mut state = self.state.write();

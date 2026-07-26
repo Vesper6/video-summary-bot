@@ -97,10 +97,12 @@ impl GuestRam {
         Ok(())
     }
 
+    /// 是否已映射到 hypervisor。
     pub fn mapped(&self) -> bool {
         self.mapped
     }
 
+    /// 设置映射状态。
     pub fn set_mapped(&mut self, mapped: bool) {
         self.mapped = mapped;
     }
@@ -129,6 +131,7 @@ pub struct GuestMemory {
 }
 
 impl GuestMemory {
+    /// 创建空的内存总览。
     pub fn new() -> Self {
         Self {
             ram: Mutex::new(Vec::new()),
@@ -136,6 +139,7 @@ impl GuestMemory {
         }
     }
 
+    /// 添加一块 RAM 区域。
     pub fn add_ram(&mut self, region: Arc<GuestRam>) {
         self.total_ram_size += region.size();
         self.ram.lock().push(region);
@@ -146,6 +150,7 @@ impl GuestMemory {
         self.ram.lock().clone()
     }
 
+    /// 总 RAM 大小（字节）。
     pub fn total_ram_size(&self) -> usize {
         self.total_ram_size
     }

@@ -18,21 +18,44 @@ pub struct PlanStep {
 #[serde(rename_all = "snake_case")]
 pub enum StepKind {
     /// 启动 VM
-    StartVm { name: String },
+    StartVm {
+        /// VM 名称
+        name: String,
+    },
     /// 抓取评论
-    CrawlComments { url: String, max: usize },
+    CrawlComments {
+        /// 视频页面 URL
+        url: String,
+        /// 最大抓取条数
+        max: usize,
+    },
     /// 抓取弹幕
-    CrawlDanmaku { url: String, max: usize },
+    CrawlDanmaku {
+        /// 视频页面 URL
+        url: String,
+        /// 最大抓取条数
+        max: usize,
+    },
     /// 视频转写
-    Transcribe { url: String },
+    Transcribe {
+        /// 视频页面 URL
+        url: String,
+    },
     /// 调用 LLM 总结
-    Summarize { prompt: String },
+    Summarize {
+        /// 总结提示词
+        prompt: String,
+    },
     /// 停止 VM
-    StopVm { name: String },
+    StopVm {
+        /// VM 名称
+        name: String,
+    },
 }
 
 /// 完整任务规划。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Plan {
+    /// 按顺序执行的步骤列表
     pub steps: Vec<PlanStep>,
 }

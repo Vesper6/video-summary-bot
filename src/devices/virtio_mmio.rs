@@ -36,51 +36,84 @@
 use std::sync::Arc;
 use parking_lot::Mutex;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 // =============================================
 // VirtIO MMIO 寄存器偏移
 // =============================================
 
+/// MagicValue 寄存器（R，恒为 0x74726976 "virt"）
 pub const VIRTIO_MMIO_MAGIC_VALUE:      u64 = 0x000;
+/// Version 寄存器（R，2 = VirtIO 1.0+）
 pub const VIRTIO_MMIO_VERSION:          u64 = 0x004;
+/// DeviceID 寄存器（R，设备类型编号）
 pub const VIRTIO_MMIO_DEVICE_ID:        u64 = 0x008;
+/// VendorID 寄存器（R，0x554D4551 "QEMU"）
 pub const VIRTIO_MMIO_VENDOR_ID:        u64 = 0x00C;
+/// DeviceFeatures 寄存器（R，设备支持的 feature bits）
 pub const VIRTIO_MMIO_DEVICE_FEATURES:  u64 = 0x010;
+/// DeviceFeaturesSel 寄存器（W，选择 feature word）
 pub const VIRTIO_MMIO_DEVICE_FEAT_SEL:  u64 = 0x014;
+/// DriverFeatures 寄存器（W，driver 确认的 feature bits）
 pub const VIRTIO_MMIO_DRIVER_FEATURES:  u64 = 0x020;
+/// DriverFeaturesSel 寄存器（W，选择 feature word）
 pub const VIRTIO_MMIO_DRIVER_FEAT_SEL:  u64 = 0x024;
+/// QueueSel 寄存器（W，选择 virtqueue 编号）
 pub const VIRTIO_MMIO_QUEUE_SEL:        u64 = 0x030;
+/// QueueNumMax 寄存器（R，最大队列深度）
 pub const VIRTIO_MMIO_QUEUE_NUM_MAX:    u64 = 0x034;
+/// QueueNum 寄存器（W，driver 设置的队列深度）
 pub const VIRTIO_MMIO_QUEUE_NUM:        u64 = 0x038;
+/// QueueReady 寄存器（RW，队列就绪标志）
 pub const VIRTIO_MMIO_QUEUE_READY:      u64 = 0x044;
+/// QueueNotify 寄存器（W，通知设备 doorbell）
 pub const VIRTIO_MMIO_QUEUE_NOTIFY:     u64 = 0x050;
+/// InterruptStatus 寄存器（R，中断原因）
 pub const VIRTIO_MMIO_INTERRUPT_STATUS: u64 = 0x060;
+/// InterruptACK 寄存器（W，中断确认）
 pub const VIRTIO_MMIO_INTERRUPT_ACK:    u64 = 0x064;
+/// Status 寄存器（RW，设备状态字节）
 pub const VIRTIO_MMIO_STATUS:           u64 = 0x070;
+/// QueueDescLow 寄存器（W，Descriptor Table 低 32 位）
 pub const VIRTIO_MMIO_QUEUE_DESC_LOW:   u64 = 0x080;
+/// QueueDescHigh 寄存器（W，Descriptor Table 高 32 位）
 pub const VIRTIO_MMIO_QUEUE_DESC_HIGH:  u64 = 0x084;
+/// QueueDriverLow 寄存器（W，Available Ring 低 32 位）
 pub const VIRTIO_MMIO_QUEUE_DRIVER_LOW: u64 = 0x090;
+/// QueueDriverHigh 寄存器（W，Available Ring 高 32 位）
 pub const VIRTIO_MMIO_QUEUE_DRIVER_HIGH:u64 = 0x094;
+/// QueueDeviceLow 寄存器（W，Used Ring 低 32 位）
 pub const VIRTIO_MMIO_QUEUE_DEVICE_LOW: u64 = 0x0A0;
+/// QueueDeviceHigh 寄存器（W，Used Ring 高 32 位）
 pub const VIRTIO_MMIO_QUEUE_DEVICE_HIGH:u64 = 0x0A4;
+/// ConfigGeneration 寄存器（R，配置代数）
 pub const VIRTIO_MMIO_CONFIG_GENERATION:u64 = 0x0FC;
+/// 设备专用配置空间起始偏移
 pub const VIRTIO_MMIO_CONFIG:           u64 = 0x100;
+/// 每个设备占用的 MMIO 空间大小
 pub const VIRTIO_MMIO_SIZE:             u64 = 0x200;
 
 // =============================================
 // VirtIO 设备 ID
 // =============================================
 
+/// VirtIO 设备类型 ID（写入 DeviceID 寄存器）。
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtioDeviceId {
+    /// virtio-net 网络设备
     Net     = 1,
+    /// virtio-blk 块设备
     Block   = 2,
+    /// virtio-console 控制台
     Console = 3,
+    /// virtio-rng 随机数发生器
     Rng     = 4,
+    /// virtio-gpu 图形设备
     Gpu     = 16,
+    /// virtio-input 输入设备
     Input   = 18,
+    /// virtio-fs 共享文件系统
     Fs      = 26,
 }
 
@@ -88,11 +121,17 @@ pub enum VirtioDeviceId {
 // VirtIO 状态位
 // =============================================
 
+/// 状态位：Guest 已发现设备
 pub const VIRTIO_STATUS_ACKNOWLEDGE:       u32 = 1;
+/// 状态位：Guest 已加载 driver
 pub const VIRTIO_STATUS_DRIVER:            u32 = 2;
+/// 状态位：driver 初始化完成，设备可用
 pub const VIRTIO_STATUS_DRIVER_OK:         u32 = 4;
+/// 状态位：feature 协商完成
 pub const VIRTIO_STATUS_FEATURES_OK:       u32 = 8;
+/// 状态位：设备出错，需要重置
 pub const VIRTIO_STATUS_DEVICE_NEEDS_RESET:u32 = 64;
+/// 状态位：driver 放弃该设备
 pub const VIRTIO_STATUS_FAILED:            u32 = 128;
 
 // =============================================
@@ -101,17 +140,23 @@ pub const VIRTIO_STATUS_FAILED:            u32 = 128;
 
 /// Descriptor 标志
 pub const VIRTQ_DESC_F_NEXT:     u16 = 1;
+/// Descriptor 标志：buffer 由设备写入（device-writable）
 pub const VIRTQ_DESC_F_WRITE:    u16 = 2;
+/// Descriptor 标志：指向间接描述符表
 pub const VIRTQ_DESC_F_INDIRECT: u16 = 4;
 
 /// VirtIO 描述符（16 字节）
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VirtqDesc {
-    pub addr:  u64,   // Guest 物理地址
+    /// Buffer 的 Guest 物理地址
+    pub addr:  u64,
+    /// Buffer 长度（字节）
     pub len:   u32,
+    /// 描述符标志（VIRTQ_DESC_F_*）
     pub flags: u16,
-    pub next:  u16,   // 下一个描述符索引（NEXT 标志有效时）
+    /// 下一个描述符索引（NEXT 标志有效时）
+    pub next:  u16,
 }
 
 /// Virtqueue 状态
@@ -137,14 +182,16 @@ pub struct Virtqueue {
 
 /// VirtIO MMIO 设备 trait（每种设备实现）。
 pub trait VirtioDevice: Send + Sync {
+    /// 返回设备类型 ID（DeviceID 寄存器值）。
     fn device_id(&self) -> VirtioDeviceId;
+    /// 返回设备支持的 64-bit feature bits。
     fn device_features(&self) -> u64;
     /// 处理 Virtqueue 通知（doorbell，queue_idx 指定哪个队列）。
     fn notify(&self, queue_idx: u32, queues: &[Virtqueue]) -> Result<()>;
     /// 读取设备配置空间（偏移 offset，大小 size）。
-    fn read_config(&self, offset: u64, size: u8) -> u32 { 0 }
+    fn read_config(&self, _offset: u64, _size: u8) -> u32 { 0 }
     /// 写设备配置空间。
-    fn write_config(&self, offset: u64, value: u32, size: u8) {}
+    fn write_config(&self, _offset: u64, _value: u32, _size: u8) {}
 }
 
 /// VirtIO MMIO 传输层（每个设备一个实例）。
@@ -174,6 +221,7 @@ impl VirtioMmio {
     const VERSION: u32 = 2;
     const VENDOR:  u32 = 0x5545_4D51; // "QEMU"
 
+    /// 创建 MMIO 传输层实例（默认预分配 4 个队列）。
     pub fn new(base_addr: u64, device: Arc<dyn VirtioDevice>) -> Self {
         let num_queues = 4; // 默认预分配 4 个队列
         Self {
@@ -216,7 +264,7 @@ impl VirtioMmio {
             VIRTIO_MMIO_STATUS           => state.status,
             VIRTIO_MMIO_CONFIG_GENERATION=> state.config_gen,
 
-            o if o >= VIRTIO_MMIO_CONFIG && o < VIRTIO_MMIO_CONFIG + 0x100 => {
+            o if (VIRTIO_MMIO_CONFIG..VIRTIO_MMIO_CONFIG + 0x100).contains(&o) => {
                 self.device.read_config(o - VIRTIO_MMIO_CONFIG, size)
             }
 
@@ -270,7 +318,6 @@ impl VirtioMmio {
                 if let Err(e) = self.device.notify(value, &queues) {
                     tracing::error!("virtio notify error: {e}");
                 }
-                return;
             }
 
             VIRTIO_MMIO_INTERRUPT_ACK    => {
@@ -330,10 +377,9 @@ impl VirtioMmio {
                 }
             }
 
-            o if o >= VIRTIO_MMIO_CONFIG && o < VIRTIO_MMIO_CONFIG + 0x100 => {
+            o if (VIRTIO_MMIO_CONFIG..VIRTIO_MMIO_CONFIG + 0x100).contains(&o) => {
                 drop(state);
                 self.device.write_config(o - VIRTIO_MMIO_CONFIG, value, size);
-                return;
             }
 
             _ => {
@@ -365,6 +411,7 @@ impl VirtioMmioBus {
     /// 每个设备占 0x200 字节
     pub const DEVICE_SIZE: u64 = VIRTIO_MMIO_SIZE;
 
+    /// 创建空的 MMIO 总线。
     pub fn new() -> Self {
         Self { devices: Vec::new() }
     }
@@ -411,6 +458,7 @@ impl VirtioMmioBus {
             gpa < Self::BASE_ADDR + self.devices.len() as u64 * Self::DEVICE_SIZE
     }
 
+    /// 返回总线上的所有设备。
     pub fn devices(&self) -> &[VirtioMmio] {
         &self.devices
     }

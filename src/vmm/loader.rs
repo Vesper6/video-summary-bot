@@ -66,43 +66,81 @@ const HDR_MAGIC: u32 = 0x5372_6448; // "HdrS"
 #[repr(C, packed)]
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SetupHeader {
+    /// setup 扇区数（每扇区 512 字节）
     pub setup_sects:         u8,   // 0x1F1
+    /// 根文件系统只读标志
     pub root_flags:          u16,  // 0x1F2
+    /// 保护模式内核大小（16 字节为单位）
     pub syssize:             u32,  // 0x1F4
+    /// 已废弃（旧协议 ramdisk 大小）
     pub ram_size:            u16,  // 0x1F8
+    /// 视频模式
     pub vid_mode:            u16,  // 0x1FA
+    /// 默认根设备号
     pub root_dev:            u16,  // 0x1FC
+    /// 引导魔数（必须为 0xAA55）
     pub boot_flag:           u16,  // 0x1FE  must be 0xAA55
+    /// 跳转指令（setup 入口）
     pub jump:                u16,  // 0x200
+    /// "HdrS" 魔数
     pub header:              u32,  // 0x202  "HdrS"
+    /// 启动协议版本
     pub version:             u16,  // 0x206
+    /// 实模式切换钩子（已废弃）
     pub realmode_swtch:      u32,  // 0x208
+    /// load-low 段地址（旧协议，只读）
     pub start_sys_seg:       u16,  // 0x20C
+    /// 内核版本字符串偏移
     pub kernel_version:      u16,  // 0x20E
+    /// bootloader 类型标识（0xFF = 未知）
     pub type_of_loader:      u8,   // 0x210
+    /// 加载标志（LOADED_HIGH / CAN_USE_HEAP 等）
     pub loadflags:           u8,   // 0x211
+    /// 实模式代码移动大小（旧协议）
     pub setup_move_size:     u16,  // 0x212
+    /// 32-bit 保护模式入口地址
     pub code32_start:        u32,  // 0x214  32-bit 入口
+    /// initrd 加载地址（低 32 位）
     pub ramdisk_image:       u32,  // 0x218  initrd 加载地址
+    /// initrd 大小（低 32 位）
     pub ramdisk_size:        u32,  // 0x21C  initrd 大小
+    /// 已废弃字段
     pub bootsect_kludge:     u32,  // 0x220
+    /// 实模式堆结束指针
     pub heap_end_ptr:        u16,  // 0x224
+    /// bootloader 扩展版本
     pub ext_loader_ver:      u8,   // 0x226
+    /// bootloader 扩展类型
     pub ext_loader_type:     u8,   // 0x227
+    /// 内核命令行地址（低 32 位）
     pub cmd_line_ptr:        u32,  // 0x228  cmdline 地址
+    /// initrd 允许的最高地址
     pub initrd_addr_max:     u32,  // 0x22C  initrd 最高地址
+    /// 内核物理对齐要求
     pub kernel_alignment:    u32,  // 0x230
+    /// 内核是否可重定位
     pub relocatable_kernel:  u8,   // 0x234
+    /// 最小对齐（2 的幂次）
     pub min_alignment:       u8,   // 0x235
+    /// 扩展加载标志（XLF_*）
     pub xloadflags:          u16,  // 0x236
+    /// 命令行最大长度
     pub cmdline_size:        u32,  // 0x238
+    /// 硬件子架构
     pub hardware_subarch:    u32,  // 0x23C
+    /// 子架构专用数据
     pub hardware_subarch_data: u64, // 0x240
+    /// 压缩内核 payload 偏移
     pub payload_offset:      u32,  // 0x248
+    /// 压缩内核 payload 长度
     pub payload_length:      u32,  // 0x24C
+    /// setup_data 链表指针
     pub setup_data:          u64,  // 0x250
+    /// 内核首选加载地址
     pub pref_address:        u64,  // 0x258
+    /// 内核初始化所需内存大小
     pub init_size:           u32,  // 0x260
+    /// EFI handover 入口偏移
     pub handover_offset:     u32,  // 0x264
 }
 
@@ -110,8 +148,11 @@ pub struct SetupHeader {
 #[repr(u32)]
 #[derive(Clone, Copy)]
 pub enum E820Type {
+    /// 可用 RAM
     Ram      = 1,
+    /// 保留区域
     Reserved = 2,
+    /// ACPI 数据
     Acpi     = 3,
 }
 
@@ -119,8 +160,11 @@ pub enum E820Type {
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct E820Entry {
+    /// 起始物理地址
     pub addr:   u64,
+    /// 段大小（字节）
     pub size:   u64,
+    /// 段类型（见 [`E820Type`]）
     pub e820type: u32,
 }
 
@@ -128,35 +172,57 @@ pub struct E820Entry {
 /// 完整结构 128 × 16 = 2048 字节（0x800）。
 #[repr(C)]
 pub struct BootParams {
+    /// 屏幕信息（screen_info）
     pub screen_info:       [u8; 0x40],  // 0x000
+    /// APM BIOS 信息
     pub apm_bios_info:     [u8; 0x14],  // 0x040
     _pad0:                 [u8; 0x0C],  // 0x054
+    /// tboot 共享页地址
     pub tboot_addr:        u64,         // 0x058 (low 8 bytes)
     _pad1:                 [u8; 0x08],  // 0x060
+    /// Intel SpeedStep（IST）信息
     pub ist_info:          [u8; 0x10],  // 0x068
+    /// ACPI RSDP 物理地址
     pub acpi_rsdp_addr:    u64,         // 0x070 (low 8 bytes)
     _pad2:                 [u8; 0x08],  // 0x078 (hi bytes)
+    /// hd0 磁盘参数（已废弃）
     pub hd0_info:          [u8; 0x10],  // 0x080
+    /// hd1 磁盘参数（已废弃）
     pub hd1_info:          [u8; 0x10],  // 0x090
+    /// 系统描述表（已废弃）
     pub sys_desc_table:    [u8; 0x10],  // 0x0A0
+    /// OLPC OpenFirmware 头
     pub olpc_ofw_header:   [u8; 0x10],  // 0x0B0
+    /// initrd 加载地址高 32 位
     pub ext_ramdisk_image: u32,         // 0x0C0
+    /// initrd 大小高 32 位
     pub ext_ramdisk_size:  u32,         // 0x0C4
+    /// cmdline 地址高 32 位
     pub ext_cmd_line_ptr:  u32,         // 0x0C8
     _pad3:                 [u8; 0x74],  // 0x0CC
+    /// e820 表项数量
     pub e820_table_count:  u8,          // 0x1E8 (e820_entries)
+    /// EDD 缓冲区项数
     pub eddbuf_entries:    u8,          // 0x1E9
+    /// EDD MBR 签名数量
     pub edd_mbr_sig_buf_entries: u8,    // 0x1EA
+    /// 键盘状态
     pub kbd_status:        u8,          // 0x1EB
+    /// Secure Boot 状态
     pub secure_boot:       u8,          // 0x1EC
     _pad4:                 [u8; 0x02],  // 0x1ED
+    /// 哨兵字节（检测有缺陷的 bootloader）
     pub sentinel:          u8,          // 0x1EF
     _pad5:                 u8,          // 0x1F0
+    /// setup_header（偏移 0x1F1）
     pub hdr:               SetupHeader, // 0x1F1
     _pad6:                 [u8; 0x24],  // after hdr (0x1F1+0x74=0x265, pad to 0x290)
+    /// EDD MBR 签名缓冲区
     pub edd_mbr_sig_buffer:[u8; 0x40],  // 0x290
+    /// e820 内存表（最多 128 项）
     pub e820_table:        [E820Entry; 128], // 0x2D0 (128 × 20 = 0xA00)
     _pad7:                 [u8; 0x30],  // 0xCD0
+    /// EDD 缓冲区
     pub eddbuf:            [u8; 0x1EC], // 0xD00
 }
 
@@ -334,6 +400,7 @@ impl KernelLoader {
         Ok(KERNEL_ADDR)
     }
 
+    /// 向后兼容的旧接口：仅读取 initramfs（骨架用）。
     pub fn load_initramfs(&self, _mem: &crate::vmm::memory::GuestMemory, initramfs_path: &Path) -> Result<()> {
         tracing::warn!("load_initramfs: use KernelLoader::load() for full boot protocol support");
         let bytes = std::fs::read(initramfs_path)?;
@@ -434,14 +501,22 @@ fn build_boot_params_bytes(
 
 /// 初始 vCPU 寄存器值（64-bit long mode，参考 firecracker / tenbox）。
 pub struct InitialRegs {
-    pub rip:    u64,  // 内核 64-bit 入口
-    pub rsp:    u64,  // 初始栈
-    pub rsi:    u64,  // boot_params 地址（Linux 启动约定）
+    /// 指令指针（内核 64-bit 入口）
+    pub rip:    u64,
+    /// 初始栈指针
+    pub rsp:    u64,
+    /// boot_params 地址（Linux 启动约定：RSI = boot_params）
+    pub rsi:    u64,
+    /// 初始 RFLAGS（bit1 恒为 1）
     pub rflags: u64,
-    pub cr0:    u64,  // PE=1 | PG=1（保护模式 + 分页）
-    pub cr3:    u64,  // 指向 PML4
-    pub cr4:    u64,  // PAE=1
-    pub efer:   u64,  // LME=1 | LMA=1（long mode active）
+    /// CR0：PE=1 | PG=1（保护模式 + 分页）
+    pub cr0:    u64,
+    /// CR3：指向 PML4 页表
+    pub cr3:    u64,
+    /// CR4：PAE=1
+    pub cr4:    u64,
+    /// EFER：LME=1 | LMA=1（long mode active）
+    pub efer:   u64,
 }
 
 impl InitialRegs {

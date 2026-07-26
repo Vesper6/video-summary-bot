@@ -7,6 +7,7 @@
 //! - [`memory`] — 客户机物理内存管理
 //! - [`loader`] — 内核 / Initramfs 加载器（占位）
 
+pub mod boot;
 pub mod core;
 pub mod loader;
 pub mod memory;
@@ -19,6 +20,7 @@ use serde::{Deserialize, Serialize};
 /// VM 状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum VmState {
     /// 已创建但未启动
     Created,
@@ -29,18 +31,15 @@ pub enum VmState {
     /// 正在停止
     Stopping,
     /// 已停止
+    #[default]
     Stopped,
     /// 崩溃
     Crashed,
 }
 
-impl Default for VmState {
-    fn default() -> Self {
-        VmState::Stopped
-    }
-}
 
 impl VmState {
+    /// 是否处于运行状态。
     pub fn is_running(&self) -> bool {
         matches!(self, VmState::Running)
     }
@@ -88,6 +87,7 @@ pub struct VmConfig {
 }
 
 impl VmConfig {
+    /// 用默认资源规格（2 vCPU / 2048 MB / 10 GB）创建 VM 配置。
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             name: name.into(),

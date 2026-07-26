@@ -77,6 +77,7 @@ pub struct SubtitleFetcher {
 }
 
 impl SubtitleFetcher {
+    /// 创建下载器（自动查找 yt-dlp / ffmpeg / cookies 文件）。
     pub fn new() -> Result<Self> {
         let ytdlp_path = find_ytdlp()?;
         let cookies_file = find_cookies_file();
@@ -92,6 +93,7 @@ impl SubtitleFetcher {
         })
     }
 
+    /// 指定 cookies 文件路径。
     pub fn with_cookies(mut self, path: PathBuf) -> Self {
         self.cookies_file = Some(path);
         self
@@ -257,14 +259,12 @@ fn find_cookies_file() -> Option<PathBuf> {
     candidates
         .into_iter()
         .map(|s| {
-            if s.starts_with("~/") {
-                if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
-                    PathBuf::from(home).join(&s[2..])
-                } else {
-                    PathBuf::from(s)
-                }
-            } else {
-                PathBuf::from(s)
+            match s.strip_prefix("~/") {
+                Some(rest) => std::env::var("HOME")
+                    .or_else(|_| std::env::var("USERPROFILE"))
+                    .map(|home| PathBuf::from(home).join(rest))
+                    .unwrap_or_else(|_| PathBuf::from(s)),
+                None => PathBuf::from(s),
             }
         })
         .find(|p| p.exists())

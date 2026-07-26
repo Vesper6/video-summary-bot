@@ -20,6 +20,7 @@ pub enum CrawlLevel {
 }
 
 impl CrawlLevel {
+    /// 档位的小写字符串表示。
     pub fn as_str(&self) -> &'static str {
         match self {
             CrawlLevel::Light => "light",
@@ -33,8 +34,11 @@ impl CrawlLevel {
 #[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CrawlType {
+    /// 仅评论
     Comments,
+    /// 仅弹幕
     Danmaku,
+    /// 评论 + 弹幕
     Both,
 }
 
@@ -77,13 +81,17 @@ pub struct SummarizeCmd {
 /// crawl 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct CrawlCmd {
+    /// 视频 URL
     #[arg(long)]
     pub url: String,
+    /// 抓取类型（评论 / 弹幕 / 两者）
     #[arg(long, value_enum, default_value_t = CrawlType::Both)]
     #[arg(rename_all = "kebab-case")]
     pub r#type: CrawlType,
+    /// 抓取档位
     #[arg(long, value_enum, default_value_t = CrawlLevel::Standard)]
     pub level: CrawlLevel,
+    /// 输出目录
     #[arg(long)]
     pub output: Option<std::path::PathBuf>,
 }
@@ -92,6 +100,7 @@ pub struct CrawlCmd {
 // summarize 核心实现
 // =============================================
 
+/// 运行 summarize 子命令。
 pub async fn run_summarize(cmd: SummarizeCmd, _config: &AppConfig) -> Result<i32> {
     let claude = ClaudeClient::from_env()?;
 
@@ -215,32 +224,126 @@ async fn summarize_text(
     Ok(0)
 }
 
-/// 调用 Claude 生成总结。
-async fn call_claude(
-    claude: &ClaudeClient,
-    content: &str,
-    cmd: &SummarizeCmd,
-) -> Result<String> {
-    let system = format!(
-        "你是专业的视频内容分析助手，擅长生成结构化的视频总结报告。请用{}输出。",
-        cmd.language
-    );
-    let depth = match cmd.level {
+/// 构造总结 system prompt（CLI 与 HTTP API 共用）。
+fn build_system_prompt(language: &str) -> String {
+    format!(
+        "你是专业的视频内容分析助手，擅长生成结构化的视频总结报告。请用{language}输出。"
+    )
+}
+
+/// 构造总结 user prompt（CLI 与 HTTP API 共用）。
+fn build_user_prompt(level: CrawlLevel, content: &str) -> String {
+    let depth = match level {
         CrawlLevel::Light => "简要总结（3-5 个核心要点）",
         CrawlLevel::Standard => "标准总结（时间线分段 + 关键要点 + 总体评价）",
         CrawlLevel::Full => "深度总结（完整时间线 + 详细分析 + 总体评价）",
     };
-    let user_prompt = format!(
+    format!(
         "请生成{depth}：\n\n{content}\n\n---\n请按照以下结构输出：\n\
          ## 📌 视频基本信息\n\
          ## 🎯 核心内容总结\n\
          ## 📋 时间线 / 内容分段\n\
          ## 💡 关键要点\n\
          ## ⭐ 总体评价"
-    );
+    )
+}
+
+/// 调用 Claude 生成总结。
+async fn call_claude(
+    claude: &ClaudeClient,
+    content: &str,
+    cmd: &SummarizeCmd,
+) -> Result<String> {
+    let system = build_system_prompt(&cmd.language);
+    let user_prompt = build_user_prompt(cmd.level, content);
 
     println!("💬 正在分析...\n");
     claude.send_with_system(&system, &user_prompt).await
+}
+
+// =============================================
+// HTTP API 入口（POST /api/summarize，GUI「视频总结」页使用）
+// =============================================
+
+/// `POST /api/summarize` 请求体。
+#[derive(Debug, serde::Deserialize)]
+pub struct SummarizeApiRequest {
+    /// 视频 URL
+    pub url: String,
+    /// 抓取档位（默认 standard）
+    pub level: Option<CrawlLevel>,
+    /// 输出语言（默认 zh-CN）
+    pub language: Option<String>,
+    /// 跳过 yt-dlp 字幕下载
+    pub no_subtitle: Option<bool>,
+}
+
+/// `POST /api/summarize` 响应体。
+#[derive(Debug, serde::Serialize)]
+pub struct SummarizeApiResponse {
+    /// 视频标题（yt-dlp 获取到时返回）
+    pub title: Option<String>,
+    /// 使用的模型
+    pub model: String,
+    /// Markdown 总结报告
+    pub markdown: String,
+    /// 是否成功获取到字幕
+    pub subtitle_fetched: bool,
+}
+
+/// GUI / HTTP API 的视频总结入口（不打印到 stdout）。
+pub async fn summarize_api(req: SummarizeApiRequest) -> Result<SummarizeApiResponse> {
+    let claude = ClaudeClient::from_env()?;
+    let level = req.level.unwrap_or(CrawlLevel::Standard);
+    let language = req.language.unwrap_or_else(|| "zh-CN".to_string());
+    let no_subtitle = req.no_subtitle.unwrap_or(false);
+    let url = req.url.trim();
+    if url.is_empty() {
+        return Err(Error::Other("url is required".into()));
+    }
+
+    let video_text = if no_subtitle {
+        None
+    } else {
+        match SubtitleFetcher::new() {
+            Ok(fetcher) => match fetcher.fetch(url).await {
+                Ok(vt) => Some(vt),
+                Err(e) => {
+                    tracing::warn!("subtitle fetch failed, falling back to URL-only: {e}");
+                    None
+                }
+            },
+            Err(e) => {
+                tracing::warn!("yt-dlp unavailable, falling back to URL-only: {e}");
+                None
+            }
+        }
+    };
+
+    let (content, title) = match &video_text {
+        Some(vt) => (vt.to_analysis_text(), Some(vt.title.clone())),
+        None => (
+            format!(
+                "视频链接：{url}\n\n注意：无法直接获取视频内容，请根据已有知识尽力分析，\
+                 并在报告开头说明限制。"
+            ),
+            None,
+        ),
+    };
+
+    let system = build_system_prompt(&language);
+    let user_prompt = build_user_prompt(level, &content);
+    let markdown = claude.send_with_system(&system, &user_prompt).await?;
+
+    Ok(SummarizeApiResponse {
+        title,
+        model: claude.model().to_string(),
+        markdown,
+        subtitle_fetched: video_text
+            .as_ref()
+            .map(|v| v.subtitle.is_some())
+            .unwrap_or(false),
+    })
 }
 
 /// 打印结果 + 可选保存文件。
@@ -268,6 +371,7 @@ fn print_and_save(
     Ok(())
 }
 
+/// 运行 crawl 子命令（尚未实现，依赖 micro VM）。
 pub async fn run_crawl(cmd: CrawlCmd, _config: &AppConfig) -> Result<i32> {
     eprintln!("❌ crawl 命令需要 micro VM 支持，尚未实现。");
     eprintln!("   提示：使用 `vsb summarize --url {}` 获取视频总结。", cmd.url);

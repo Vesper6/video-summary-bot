@@ -13,6 +13,7 @@ pub struct VirtioGpu {
 }
 
 impl VirtioGpu {
+    /// 创建 GPU 设备（默认启用 SPICE 输出）。
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             width,
@@ -21,6 +22,7 @@ impl VirtioGpu {
         }
     }
 
+    /// 返回设备类型（Gpu）。
     pub fn device_type(&self) -> VirtioDeviceType {
         VirtioDeviceType::Gpu
     }

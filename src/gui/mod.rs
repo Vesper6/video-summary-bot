@@ -8,7 +8,9 @@ use crate::error::{Error, Result};
 /// 桌面 GUI 选项。
 #[derive(Debug, Clone)]
 pub struct DesktopOpts {
+    /// 窗口宽度（像素）
     pub width: u32,
+    /// 窗口高度（像素）
     pub height: u32,
 }
 

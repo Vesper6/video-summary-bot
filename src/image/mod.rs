@@ -21,6 +21,7 @@ pub enum ImageFormat {
 }
 
 impl ImageFormat {
+    /// 根据文件扩展名推断格式（`.qcow2` → Qcow2，其余 → Raw）。
     pub fn from_path(path: &Path) -> Self {
         match path.extension().and_then(|e| e.to_str()) {
             Some("qcow2") => ImageFormat::Qcow2,

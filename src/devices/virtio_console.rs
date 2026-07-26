@@ -16,6 +16,7 @@ use crate::error::Result;
 
 /// VirtIO Console 设备功能位
 const VIRTIO_CONSOLE_F_SIZE:       u64 = 1 << 0;
+#[allow(dead_code)] // 多端口支持接通后使用
 const VIRTIO_CONSOLE_F_MULTIPORT:  u64 = 1 << 1;
 
 /// Console 配置空间
@@ -35,8 +36,10 @@ struct ConsoleConfig {
 /// - `rx_receiver`：从 Guest 接收的数据
 pub struct VirtioConsole {
     /// 宿主 → Guest（写入此 sender，数据会出现在 Guest 的 stdin）
+    #[allow(dead_code)] // 队列收发接通后使用
     tx_sender: mpsc::Sender<Vec<u8>>,
     /// Guest → 宿主（读取此 receiver 获取 Guest 的输出）
+    #[allow(dead_code)] // 队列收发接通后使用
     rx_sender: mpsc::Sender<Vec<u8>>,
     state: Mutex<ConsoleState>,
 }
@@ -86,7 +89,7 @@ impl VirtioDevice for VirtioConsole {
         VIRTIO_CONSOLE_F_SIZE
     }
 
-    fn notify(&self, queue_idx: u32, queues: &[Virtqueue]) -> Result<()> {
+    fn notify(&self, queue_idx: u32, _queues: &[Virtqueue]) -> Result<()> {
         // queue 0 = receiveq（Guest 发数据给宿主）
         if queue_idx == 0 {
             tracing::debug!("virtio-console: guest sent data on queue 0");

@@ -18,6 +18,7 @@ pub struct GuiCmd {
     pub height: u32,
 }
 
+/// 运行 gui 子命令（打开桌面窗口）。
 pub async fn run(cmd: GuiCmd, _config: &AppConfig) -> Result<i32> {
     gui::run(DesktopOpts {
         width: cmd.width,

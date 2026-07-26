@@ -6,7 +6,6 @@
 
 pub mod guest_agent;
 
-use crate::error::{Error, Result};
 
 /// IPC 端点路径（平台自适应）。
 pub fn ipc_path(vm_name: &str) -> std::path::PathBuf {

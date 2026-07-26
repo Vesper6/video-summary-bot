@@ -12,7 +12,7 @@
       <div class="titlebar-left">
         <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%232563eb'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='14' font-family='sans-serif' font-weight='bold'%3EV%3C/text%3E%3C/svg%3E" alt="" class="logo" />
         <span class="app-title">Video Summary Bot</span>
-        <span class="app-subtitle">桌面版 · VM Manager</span>
+        <span class="app-subtitle">桌面版</span>
       </div>
       <div class="titlebar-right">
         <span id="hv-status" class="badge">探测中…</span>
@@ -21,83 +21,164 @@
     </header>
 
     <nav class="menubar">
-      <span class="menu-item">管理</span>
-      <span class="menu-item active">虚拟机</span>
-      <span class="menu-item">视频总结</span>
-      <span class="menu-item">帮助</span>
+      <span class="menu-item" data-view="summary">视频总结</span>
+      <span class="menu-item active" data-view="vm">虚拟机</span>
+      <span class="menu-item" data-view="help">帮助</span>
     </nav>
 
-    <div class="toolbar">
-      <button class="tb-btn primary" id="btn-new" title="新建虚拟机">
-        <span class="icon">＋</span> 新建虚拟机
-      </button>
-      <button class="tb-btn" id="btn-edit" title="编辑" disabled>✎ 编辑</button>
-      <button class="tb-btn danger" id="btn-delete" title="删除" disabled>🗑 删除</button>
-      <span class="tb-sep"></span>
-      <button class="tb-btn success" id="btn-start" title="启动" disabled>▶ 启动</button>
-      <button class="tb-btn" id="btn-stop" title="停止" disabled>■ 停止</button>
-      <button class="tb-btn" id="btn-reboot" title="重启" disabled>↻ 重启</button>
-      <button class="tb-btn" id="btn-shutdown" title="关机" disabled>⏻ 关机</button>
-      <span class="tb-sep"></span>
-      <button class="tb-btn" id="btn-refresh" title="刷新">⟳ 刷新</button>
+    <!-- ══════════ 视图：虚拟机 ══════════ -->
+    <div id="view-vm" class="view active">
+      <div class="toolbar">
+        <button class="tb-btn primary" id="btn-new" title="新建虚拟机">
+          <span class="icon">＋</span> 新建虚拟机
+        </button>
+        <button class="tb-btn" id="btn-edit" title="编辑" disabled>✎ 编辑</button>
+        <button class="tb-btn danger" id="btn-delete" title="删除" disabled>🗑 删除</button>
+        <span class="tb-sep"></span>
+        <button class="tb-btn success" id="btn-start" title="启动" disabled>▶ 启动</button>
+        <button class="tb-btn" id="btn-stop" title="停止" disabled>■ 停止</button>
+        <button class="tb-btn" id="btn-reboot" title="重启" disabled>↻ 重启</button>
+        <button class="tb-btn" id="btn-shutdown" title="关机" disabled>⏻ 关机</button>
+        <span class="tb-sep"></span>
+        <button class="tb-btn" id="btn-refresh" title="刷新">⟳ 刷新</button>
+      </div>
+
+      <main class="workspace">
+        <aside class="vm-sidebar">
+          <div class="sidebar-header">虚拟机</div>
+          <ul id="vm-list" class="vm-list"></ul>
+          <div id="vm-empty" class="vm-empty hidden">暂无虚拟机<br><small>点击「新建虚拟机」开始</small></div>
+        </aside>
+
+        <section class="main-panel">
+          <div class="tabs">
+            <button class="tab active" data-tab="info">基本信息</button>
+            <button class="tab" data-tab="console">控制台</button>
+            <button class="tab" data-tab="display">屏幕显示</button>
+          </div>
+
+          <div id="panel-info" class="tab-panel active">
+            <div id="no-selection" class="placeholder">
+              <p>← 从左侧选择一个虚拟机</p>
+            </div>
+            <div id="info-content" class="info-grid hidden">
+              <div class="info-card">
+                <h3>配置</h3>
+                <dl>
+                  <dt>名称</dt><dd id="info-name">—</dd>
+                  <dt>状态</dt><dd id="info-state">—</dd>
+                  <dt>vCPU</dt><dd id="info-cpus">—</dd>
+                  <dt>内存</dt><dd id="info-memory">—</dd>
+                  <dt>磁盘</dt><dd id="info-disk">—</dd>
+                </dl>
+              </div>
+              <div class="info-card">
+                <h3>启动参数</h3>
+                <pre id="info-cmdline" class="cmdline">—</pre>
+              </div>
+              <div class="info-card wide">
+                <h3>系统健康</h3>
+                <div id="doctor-checks" class="doctor-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <div id="panel-console" class="tab-panel">
+            <div class="console-wrap">
+              <pre id="console-output" class="console">[vsb] 等待 VM 启动…</pre>
+            </div>
+          </div>
+
+          <div id="panel-display" class="tab-panel">
+            <div class="display-placeholder">
+              <div class="display-icon">🖥</div>
+              <h3>远程桌面</h3>
+              <p>参考 TenBox：virtio-gpu + SPICE / WebRTC 显示 Guest 桌面。</p>
+              <p class="muted">当前为 Demo 阶段，屏幕显示尚未接通。VM 启动后可在「控制台」查看串口日志。</p>
+            </div>
+          </div>
+        </section>
+      </main>
     </div>
 
-    <main class="workspace">
-      <aside class="vm-sidebar">
-        <div class="sidebar-header">虚拟机</div>
-        <ul id="vm-list" class="vm-list"></ul>
-        <div id="vm-empty" class="vm-empty hidden">暂无虚拟机<br><small>点击「新建虚拟机」开始</small></div>
-      </aside>
-
-      <section class="main-panel">
-        <div class="tabs">
-          <button class="tab active" data-tab="info">基本信息</button>
-          <button class="tab" data-tab="console">控制台</button>
-          <button class="tab" data-tab="display">屏幕显示</button>
-        </div>
-
-        <div id="panel-info" class="tab-panel active">
-          <div id="no-selection" class="placeholder">
-            <p>← 从左侧选择一个虚拟机</p>
+    <!-- ══════════ 视图：视频总结 ══════════ -->
+    <div id="view-summary" class="view">
+      <main class="workspace">
+        <aside class="summary-form-panel">
+          <div class="sidebar-header">视频总结</div>
+          <form id="form-summarize" class="summary-form">
+            <label>视频 URL
+              <input name="url" required placeholder="https://www.bilibili.com/video/BV… 或 YouTube 链接" />
+            </label>
+            <label>总结深度
+              <select name="level">
+                <option value="light">简要（3-5 要点）</option>
+                <option value="standard" selected>标准（时间线 + 要点 + 评价）</option>
+                <option value="full">深度（完整分析）</option>
+              </select>
+            </label>
+            <label>输出语言
+              <select name="language">
+                <option value="zh-CN" selected>中文（简体）</option>
+                <option value="zh-TW">中文（繁體）</option>
+                <option value="en">English</option>
+                <option value="ja">日本語</option>
+              </select>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" name="no_subtitle" />
+              跳过字幕下载（不调用 yt-dlp，直接让 Claude 分析）
+            </label>
+            <button type="submit" class="tb-btn primary" id="btn-summarize">🎬 开始总结</button>
+            <p class="muted summary-hint">
+              需配置 <code>ANTHROPIC_API_KEY</code>；B 站 / YouTube 完整字幕需项目根目录放
+              <code>cookies.txt</code>。
+            </p>
+          </form>
+        </aside>
+        <section class="main-panel summary-result-panel">
+          <div id="summary-placeholder" class="placeholder">
+            <p>输入视频链接，点击「开始总结」</p>
           </div>
-          <div id="info-content" class="info-grid hidden">
-            <div class="info-card">
-              <h3>配置</h3>
-              <dl>
-                <dt>名称</dt><dd id="info-name">—</dd>
-                <dt>状态</dt><dd id="info-state">—</dd>
-                <dt>vCPU</dt><dd id="info-cpus">—</dd>
-                <dt>内存</dt><dd id="info-memory">—</dd>
-                <dt>磁盘</dt><dd id="info-disk">—</dd>
-              </dl>
-            </div>
-            <div class="info-card">
-              <h3>启动参数</h3>
-              <pre id="info-cmdline" class="cmdline">—</pre>
-            </div>
-            <div class="info-card wide">
-              <h3>系统健康</h3>
-              <div id="doctor-checks" class="doctor-list"></div>
-            </div>
+          <div id="summary-loading" class="summary-loading hidden">
+            <div class="spinner"></div>
+            <p>正在获取字幕并调用 Claude 分析…<br><small class="muted">较长视频可能需要 1-2 分钟</small></p>
           </div>
-        </div>
+          <article id="summary-result" class="summary-result hidden"></article>
+        </section>
+      </main>
+    </div>
 
-        <div id="panel-console" class="tab-panel">
-          <div class="console-wrap">
-            <pre id="console-output" class="console">[vsb] 等待 VM 启动…</pre>
-          </div>
+    <!-- ══════════ 视图：帮助 ══════════ -->
+    <div id="view-help" class="view">
+      <main class="help-panel">
+        <div class="info-card">
+          <h3>快速上手</h3>
+          <ol class="help-list">
+            <li>配置 Claude API：设置 <code>ANTHROPIC_API_KEY</code>（或 <code>ANTHROPIC_AUTH_TOKEN</code>）环境变量</li>
+            <li>安装 yt-dlp：<code>pip install yt-dlp</code></li>
+            <li>「视频总结」页粘贴视频链接，点击开始总结</li>
+            <li>B 站 / YouTube 登录内容：用浏览器插件导出 <code>cookies.txt</code> 放到程序目录</li>
+          </ol>
         </div>
-
-        <div id="panel-display" class="tab-panel">
-          <div class="display-placeholder">
-            <div class="display-icon">🖥</div>
-            <h3>远程桌面</h3>
-            <p>参考 TenBox：virtio-gpu + SPICE / WebRTC 显示 Guest 桌面。</p>
-            <p class="muted">当前为 Demo 阶段，屏幕显示尚未接通。VM 启动后可在「控制台」查看串口日志。</p>
-          </div>
+        <div class="info-card">
+          <h3>虚拟机（micro VM）</h3>
+          <ol class="help-list">
+            <li>准备 guest 镜像：<code>bash scripts/prepare-guest.sh</code> + <code>bash scripts/quick-rootfs.sh</code></li>
+            <li>Windows 构建：<code>cargo build --release --features whvp</code>；Linux：<code>--features kvm</code></li>
+            <li>「虚拟机」页新建并启动 VM，「控制台」标签实时查看内核串口日志</li>
+            <li>CLI 等价命令：<code>vsb vm create / start / logs / stop</code></li>
+          </ol>
         </div>
-      </section>
-    </main>
+        <div class="info-card">
+          <h3>常用命令</h3>
+          <pre class="cmdline">vsb doctor all                       # 健康检查
+vsb summarize --url "…"              # 命令行总结
+vsb vm boot                          # 端到端 VM 启动验证
+vsb serve --port 8080                # 启动 HTTP API</pre>
+        </div>
+      </main>
+    </div>
 
     <footer class="statusbar">
       <span id="status-msg">就绪</span>
@@ -115,6 +196,20 @@
       <div class="modal-actions">
         <button type="button" class="tb-btn" id="btn-cancel-create">取消</button>
         <button type="submit" class="tb-btn primary">创建</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-edit" class="modal">
+    <form method="dialog" id="form-edit">
+      <h2>编辑虚拟机 <span id="edit-vm-name" class="muted"></span></h2>
+      <label>vCPU <input name="cpus" type="number" min="1" max="16" /></label>
+      <label>内存 (MB) <input name="memory_mb" type="number" min="128" step="512" /></label>
+      <label>磁盘 (GB) <input name="disk_gb" type="number" min="1" /></label>
+      <label>内核命令行 <input name="cmdline" placeholder="console=ttyS0,115200 root=/dev/vda rw …" /></label>
+      <div class="modal-actions">
+        <button type="button" class="tb-btn" id="btn-cancel-edit">取消</button>
+        <button type="submit" class="tb-btn primary">保存</button>
       </div>
     </form>
   </dialog>

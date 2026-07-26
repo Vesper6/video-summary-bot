@@ -15,14 +15,17 @@ pub enum InputKind {
 
 /// virtio-input 设备。
 pub struct VirtioInput {
+    /// 输入设备类型
     pub kind: InputKind,
 }
 
 impl VirtioInput {
+    /// 创建指定类型的输入设备。
     pub fn new(kind: InputKind) -> Self {
         Self { kind }
     }
 
+    /// 返回设备类型（Input）。
     pub fn device_type(&self) -> VirtioDeviceType {
         VirtioDeviceType::Input
     }

@@ -42,6 +42,7 @@ pub enum VmCmd {
     Boot(BootCmd),
 }
 
+/// ls 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct LsCmd {
     /// 以 JSON 格式输出
@@ -49,6 +50,7 @@ pub struct LsCmd {
     pub json: bool,
 }
 
+/// create 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct CreateCmd {
     /// VM 名称
@@ -80,19 +82,38 @@ pub struct CreateCmd {
     pub rootfs: Option<std::path::PathBuf>,
 }
 
+/// edit 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct EditCmd {
     /// VM 名称
     #[arg(long)]
     pub name: String,
+
+    /// 新的 vCPU 数量
+    #[arg(long)]
+    pub cpus: Option<u8>,
+
+    /// 新的内存大小（MB）
+    #[arg(long)]
+    pub memory: Option<u32>,
+
+    /// 新的磁盘大小（GB）
+    #[arg(long)]
+    pub disk: Option<u32>,
+
+    /// 新的内核命令行（传空字符串恢复默认）
+    #[arg(long)]
+    pub cmdline: Option<String>,
 }
 
+/// 仅带 VM 名称的命令参数（start / stop / reboot 等）。
 #[derive(Debug, clap::Args)]
 pub struct NameCmd {
     /// VM 名称
     pub name: String,
 }
 
+/// rm 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct RmCmd {
     /// VM 名称
@@ -103,6 +124,7 @@ pub struct RmCmd {
     pub force: bool,
 }
 
+/// logs 命令参数。
 #[derive(Debug, clap::Args)]
 pub struct LogsCmd {
     /// VM 名称
@@ -166,53 +188,172 @@ pub async fn run(cmd: VmCmd, _config: &AppConfig) -> Result<i32> {
     }
 }
 
-async fn ls(_cmd: LsCmd) -> Result<i32> {
-    tracing::warn!("vm ls: not yet implemented");
+use crate::api::vm_store::{CreateVmRequest, UpdateVmRequest, VmStore};
+
+/// 打开默认 VM 存储（`./data/vms`，与 GUI / HTTP API 共用）。
+fn open_store() -> Result<VmStore> {
+    VmStore::new(VmStore::default_path())
+}
+
+async fn ls(cmd: LsCmd) -> Result<i32> {
+    let store = open_store()?;
+    let vms = store.list()?;
+    if cmd.json {
+        println!("{}", serde_json::to_string_pretty(&vms).unwrap_or_default());
+        return Ok(0);
+    }
+    if vms.is_empty() {
+        println!("（暂无虚拟机，使用 `vsb vm create --name <name>` 创建）");
+        return Ok(0);
+    }
+    println!("{:<20} {:<10} {:>5} {:>10} {:>8}", "NAME", "STATE", "vCPU", "MEM(MB)", "DISK(GB)");
+    for vm in vms {
+        println!(
+            "{:<20} {:<10} {:>5} {:>10} {:>8}",
+            vm.name,
+            format!("{:?}", vm.state).to_lowercase(),
+            vm.cpus,
+            vm.memory_mb,
+            vm.disk_gb
+        );
+    }
     Ok(0)
 }
 
-async fn create(_cmd: CreateCmd) -> Result<i32> {
-    tracing::warn!("vm create: not yet implemented");
+async fn create(cmd: CreateCmd) -> Result<i32> {
+    let store = open_store()?;
+    let vm = store.create(CreateVmRequest {
+        name: cmd.name,
+        cpus: cmd.cpus,
+        memory_mb: cmd.memory,
+        disk_gb: cmd.disk,
+        cmdline: None,
+        kernel: cmd.kernel,
+        initramfs: cmd.initramfs,
+        rootfs: cmd.rootfs,
+    })?;
+    println!("✅ 已创建 VM '{}'（{} vCPU, {} MB, {} GB）", vm.name, vm.cpus, vm.memory_mb, vm.disk_gb);
     Ok(0)
 }
 
-async fn edit(_cmd: EditCmd) -> Result<i32> {
-    tracing::warn!("vm edit: not yet implemented");
+async fn edit(cmd: EditCmd) -> Result<i32> {
+    let store = open_store()?;
+    if cmd.cpus.is_none() && cmd.memory.is_none() && cmd.disk.is_none() && cmd.cmdline.is_none() {
+        eprintln!("提示：使用 --cpus / --memory / --disk / --cmdline 指定要修改的字段");
+        return Ok(1);
+    }
+    let vm = store.update(
+        &cmd.name,
+        UpdateVmRequest {
+            cpus: cmd.cpus,
+            memory_mb: cmd.memory,
+            disk_gb: cmd.disk,
+            cmdline: cmd.cmdline,
+        },
+    )?;
+    println!("✅ 已更新 VM '{}'（{} vCPU, {} MB, {} GB）", vm.name, vm.cpus, vm.memory_mb, vm.disk_gb);
     Ok(0)
 }
 
-async fn start(_cmd: NameCmd) -> Result<i32> {
-    tracing::warn!("vm start: not yet implemented");
+/// 打印 `cursor` 之后的新控制台行，返回新游标。
+fn drain_console(store: &VmStore, name: &str, cursor: usize) -> usize {
+    match store.console_tail(name, cursor) {
+        Ok((lines, next)) => {
+            for line in lines {
+                println!("{line}");
+            }
+            next
+        }
+        Err(_) => cursor,
+    }
+}
+
+async fn start(cmd: NameCmd) -> Result<i32> {
+    let store = open_store()?;
+    let mut cursor = 0;
+    store.start(&cmd.name)?;
+    cursor = drain_console(&store, &cmd.name, cursor);
+
+    if store.is_boot_active(&cmd.name) {
+        println!("[vsb] （Ctrl+C 请求停止 VM）");
+        loop {
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    let _ = store.stop(&cmd.name);
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_millis(300)) => {}
+            }
+            cursor = drain_console(&store, &cmd.name, cursor);
+            if !store.is_boot_active(&cmd.name) {
+                break;
+            }
+        }
+        drain_console(&store, &cmd.name, cursor);
+    }
+
+    let vm = store.get(&cmd.name)?;
+    println!("[vsb] state: {:?}", vm.state);
     Ok(0)
 }
 
-async fn stop(_cmd: NameCmd) -> Result<i32> {
-    tracing::warn!("vm stop: not yet implemented");
+async fn stop(cmd: NameCmd) -> Result<i32> {
+    let store = open_store()?;
+    let vm = store.stop(&cmd.name)?;
+    println!("✅ VM '{}' → {:?}", vm.name, vm.state);
     Ok(0)
 }
 
-async fn reboot(_cmd: NameCmd) -> Result<i32> {
-    tracing::warn!("vm reboot: not yet implemented");
+async fn reboot(cmd: NameCmd) -> Result<i32> {
+    let store = open_store()?;
+    let vm = store.reboot(&cmd.name)?;
+    println!("✅ VM '{}' → {:?}", vm.name, vm.state);
     Ok(0)
 }
 
-async fn shutdown(_cmd: NameCmd) -> Result<i32> {
-    tracing::warn!("vm shutdown: not yet implemented");
+async fn shutdown(cmd: NameCmd) -> Result<i32> {
+    let store = open_store()?;
+    let vm = store.shutdown(&cmd.name)?;
+    println!("✅ VM '{}' → {:?}", vm.name, vm.state);
     Ok(0)
 }
 
-async fn rm(_cmd: RmCmd) -> Result<i32> {
-    tracing::warn!("vm rm: not yet implemented");
+async fn rm(cmd: RmCmd) -> Result<i32> {
+    let store = open_store()?;
+    if !cmd.force {
+        use std::io::Write;
+        print!("确定删除 VM '{}'？[y/N] ", cmd.name);
+        std::io::stdout().flush().ok();
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer).ok();
+        if !matches!(answer.trim(), "y" | "Y" | "yes") {
+            println!("已取消");
+            return Ok(1);
+        }
+    }
+    store.delete(&cmd.name)?;
+    println!("✅ 已删除 VM '{}'", cmd.name);
     Ok(0)
 }
 
-async fn console(_cmd: NameCmd) -> Result<i32> {
-    tracing::warn!("vm console: not yet implemented");
-    Ok(0)
+async fn console(cmd: NameCmd) -> Result<i32> {
+    logs(LogsCmd {
+        name: cmd.name,
+        follow: true,
+    })
+    .await
 }
 
-async fn logs(_cmd: LogsCmd) -> Result<i32> {
-    tracing::warn!("vm logs: not yet implemented");
+async fn logs(cmd: LogsCmd) -> Result<i32> {
+    let store = open_store()?;
+    let mut cursor = drain_console(&store, &cmd.name, 0);
+    // 确认 VM 存在（drain_console 吞掉了错误）
+    store.get(&cmd.name)?;
+    if cmd.follow {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            cursor = drain_console(&store, &cmd.name, cursor);
+        }
+    }
     Ok(0)
 }
 

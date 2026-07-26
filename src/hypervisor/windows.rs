@@ -7,12 +7,10 @@
 //! - `WHvRunVirtualProcessor(handle, idx, ctx, size) -> Result<()>`
 
 use async_trait::async_trait;
-use std::sync::Arc;
-use parking_lot::RwLock;
 
 use crate::error::{Error, Result};
 use crate::hypervisor::{Hypervisor, ProbeResult};
-use crate::vmm::{VmConfig, VmState};
+use crate::vmm::VmConfig;
 
 // =============================================
 // Windows WHVP 实现（feature-gated）
@@ -298,12 +296,14 @@ struct WhvpState {
     stop_flag: Arc<std::sync::atomic::AtomicBool>,
 }
 
+/// Windows WHVP（Windows Hypervisor Platform）后端。
 pub struct WhvpBackend {
     #[cfg(all(target_os = "windows", feature = "whvp"))]
     state: Arc<RwLock<WhvpState>>,
 }
 
 impl WhvpBackend {
+    /// 创建 WHVP 后端（需要 Windows + `whvp` feature）。
     pub fn new() -> Result<Self> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
@@ -331,7 +331,7 @@ impl WhvpBackend {
     ///
     /// `hva` 必须是 4KB 对齐的宿主虚拟地址；
     /// `gpa` + `size` 必须在 partition 范围内。
-    pub fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()> {
+    pub fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             let mut state = self.state.write();
@@ -405,7 +405,7 @@ impl Hypervisor for WhvpBackend {
         }
     }
 
-    fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()> {
+    fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             self.map_ram(hva, gpa, size)
@@ -416,15 +416,15 @@ impl Hypervisor for WhvpBackend {
 
     fn set_vcpu_entry(
         &self,
-        rip: u64,
-        rsp: u64,
-        rsi: u64,
-        cr0: u64,
-        cr3: u64,
-        cr4: u64,
-        efer: u64,
-        gdt_base: u64,
-        gdt_limit: u16,
+        _rip: u64,
+        _rsp: u64,
+        _rsi: u64,
+        _cr0: u64,
+        _cr3: u64,
+        _cr4: u64,
+        _efer: u64,
+        _gdt_base: u64,
+        _gdt_limit: u16,
     ) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
@@ -438,7 +438,7 @@ impl Hypervisor for WhvpBackend {
         Err(Error::Vmm("WHVP not available".into()))
     }
 
-    async fn create_vm(&self, config: &VmConfig) -> Result<()> {
+    async fn create_vm(&self, _config: &VmConfig) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             let mut state = self.state.write();

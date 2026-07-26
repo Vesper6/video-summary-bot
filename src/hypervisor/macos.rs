@@ -15,10 +15,12 @@ use crate::vmm::VmConfig;
 /// macOS Hypervisor Framework 后端（占位实现）。
 pub struct HvfBackend {
     // hv_vm_t（实际是 *mut c_void）
+    #[allow(dead_code)] // HVF 实现接通后使用
     vm_handle: Option<usize>,
 }
 
 impl HvfBackend {
+    /// 创建 HVF 后端（占位实现）。
     pub fn new() -> Result<Self> {
         Ok(Self { vm_handle: None })
     }

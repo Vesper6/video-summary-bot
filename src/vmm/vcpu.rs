@@ -26,6 +26,7 @@ pub struct VcpuState {
 }
 
 impl VcpuState {
+    /// 创建初始 vCPU 状态（寄存器清零，RFLAGS 保留位置 1）。
     pub fn new(id: u32) -> Self {
         Self {
             id,
@@ -48,11 +49,28 @@ pub enum VcpuExit {
     /// 客户机请求关机
     Shutdown,
     /// I/O 端口读写
-    Io { port: u16, direction: IoDirection, size: u8 },
+    Io {
+        /// 端口号
+        port: u16,
+        /// I/O 方向
+        direction: IoDirection,
+        /// 访问宽度（字节）
+        size: u8,
+    },
     /// MMIO 读写
-    Mmio { addr: u64, direction: IoDirection, size: u8 },
+    Mmio {
+        /// 客户机物理地址
+        addr: u64,
+        /// I/O 方向
+        direction: IoDirection,
+        /// 访问宽度（字节）
+        size: u8,
+    },
     /// 客户机故障
-    FailEntry { code: u32 },
+    FailEntry {
+        /// 失败码
+        code: u32,
+    },
 }
 
 /// I/O 方向。

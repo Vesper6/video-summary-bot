@@ -11,6 +11,7 @@ pub struct VirtioBlock {
 }
 
 impl VirtioBlock {
+    /// 创建块设备，容量按镜像文件大小自动计算。
     pub fn new(image_path: std::path::PathBuf) -> Self {
         let capacity_sectors = std::fs::metadata(&image_path)
             .map(|m| m.len() / 512)
@@ -21,6 +22,7 @@ impl VirtioBlock {
         }
     }
 
+    /// 返回设备类型（Block）。
     pub fn device_type(&self) -> VirtioDeviceType {
         VirtioDeviceType::Block
     }

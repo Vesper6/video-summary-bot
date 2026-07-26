@@ -174,17 +174,26 @@ pub async fn run_info(cmd: InfoCmd, _config: &AppConfig) -> Result<i32> {
 /// 系统信息聚合。
 #[derive(Debug, serde::Serialize)]
 pub struct SystemInfo {
+    /// 程序版本号
     pub version: String,
+    /// 操作系统（如 linux / windows / macos）
     pub platform: String,
+    /// hypervisor 后端名称
     pub hypervisor: String,
+    /// CPU 核数
     pub cpu_count: usize,
+    /// 物理内存总量（MB）
     pub total_memory_mb: u64,
+    /// 内核家族（unix / windows）
     pub kernel: String,
+    /// yt-dlp 探测结果
     pub ytdlp: String,
+    /// Claude API 探测结果
     pub claude: String,
 }
 
 impl SystemInfo {
+    /// 采集当前系统信息。
     pub fn gather() -> Self {
         let ytdlp = probe_ytdlp();
         let claude = crate::agents::claude::probe();
@@ -200,6 +209,7 @@ impl SystemInfo {
         }
     }
 
+    /// 以对齐表格形式打印到 stdout。
     pub fn print_table(&self) {
         println!("version       : {}", self.version);
         println!("platform      : {}", self.platform);

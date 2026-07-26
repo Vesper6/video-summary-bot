@@ -14,6 +14,7 @@ use crate::error::{Error, Result};
 
 /// 应用配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct AppConfig {
     /// VM 默认配置
     #[serde(default)]
@@ -61,8 +62,11 @@ impl Default for VmDefaults {
 /// LLM 配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LlmConfig {
+    /// 模型名称
     pub model: String,
+    /// 单次请求最大 token 数
     pub max_tokens: u32,
+    /// 采样温度
     pub temperature: f32,
 }
 
@@ -79,8 +83,11 @@ impl Default for LlmConfig {
 /// 输出配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {
+    /// 输出目录
     pub dir: PathBuf,
+    /// 是否保存原始抓取数据
     pub save_raw_data: bool,
+    /// 是否生成时间线 JSON
     pub generate_timeline_json: bool,
 }
 
@@ -94,15 +101,6 @@ impl Default for OutputConfig {
     }
 }
 
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            vm: VmDefaults::default(),
-            llm: LlmConfig::default(),
-            output: OutputConfig::default(),
-        }
-    }
-}
 
 impl AppConfig {
     /// 加载配置。

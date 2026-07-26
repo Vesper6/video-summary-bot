@@ -15,10 +15,15 @@ pub type BootLog = Arc<dyn Fn(String) + Send + Sync>;
 /// 启动参数。
 #[derive(Debug, Clone)]
 pub struct BootOptions {
+    /// VM 配置
     pub config: VmConfig,
+    /// 内核镜像路径
     pub kernel: PathBuf,
+    /// initrd 镜像路径
     pub initrd: PathBuf,
+    /// rootfs 镜像路径
     pub rootfs: PathBuf,
+    /// 启动超时（秒）
     pub timeout_secs: u64,
 }
 

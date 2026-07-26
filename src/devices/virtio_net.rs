@@ -11,6 +11,7 @@ pub struct VirtioNet {
 }
 
 impl VirtioNet {
+    /// 创建网络设备（指定后端接口与 MAC 地址）。
     pub fn new(backend: impl Into<String>, mac: [u8; 6]) -> Self {
         Self {
             backend: backend.into(),
@@ -18,6 +19,7 @@ impl VirtioNet {
         }
     }
 
+    /// 返回设备类型（Net）。
     pub fn device_type(&self) -> VirtioDeviceType {
         VirtioDeviceType::Net
     }

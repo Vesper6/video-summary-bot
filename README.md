@@ -39,9 +39,11 @@ Video Summary Bot（`vsb`）是一个命令行工具，通过 **yt-dlp 下载字
 | `vsb summarize --text-file` | ✅ 可用 | 读取 .vtt/.srt/.txt 字幕文件 |
 | `vsb doctor all` | ✅ 可用 | 健康检查（必选/可选依赖） |
 | `vsb info` | ✅ 可用 | 系统信息（平台/hypervisor/工具） |
-| `vsb vm *` | 🚧 骨架 | VM 生命周期（未接通） |
+| `vsb vm *` | ✅ 可用 | VM 生命周期（ls/create/edit/start/stop/rm/logs，与 GUI 共用存储） |
+| `vsb serve` / GUI | ✅ 可用 | HTTP API + Web 管理界面（VM 管理 / 视频总结 / SSE 控制台） |
+| `vsb vm boot` | ✅ 可用 | 端到端 VM 启动（WHVP 已验证内核引导；需 assets/ 镜像） |
 | `vsb crawl` | 🚧 骨架 | 评论/弹幕抓取（需 micro VM） |
-| WHVP 后端 | 🔧 实现 | 核心 API 已实现，待端到端测试 |
+| WHVP 后端 | 🔧 实现 | 内核可引导并输出串口日志；PIT/VirtIO-block 进行中 |
 | KVM 后端 | 🔧 实现 | 核心 API 已实现，待 Linux 测试 |
 
 ---
@@ -356,17 +358,20 @@ cp .env.example .env
 - [x] GitHub Actions CI（3 平台 lint/build/test）
 - [x] Release 工作流（5 架构跨平台构建）
 
+- [x] HTTP API（`vsb serve`，axum 路由：VM CRUD + start/stop + SSE 控制台流 + summarize）
+- [x] Web GUI（VM 管理 / 编辑对话框 / 视频总结页 / 实时控制台）
+- [x] VM 生命周期 CLI 接通（`vsb vm ls/create/edit/start/stop/reboot/rm/logs`）
+- [x] Windows WHVP 端到端 VM 启动验证（Linux 6.12 内核引导 + 串口输出）
+- [x] Alpine Linux rootfs + 内核准备脚本（`scripts/prepare-guest.sh` / `quick-rootfs.sh`）
+
 ### 进行中 / 近期
 - [ ] B 站完整字幕获取（需 cookies，端到端验证）
 - [ ] `summarize` 输出 HTML 格式
-- [ ] HTTP API（`vsb serve`，axum 路由）
+- [ ] PIT/APIC 定时器模拟（guest 延迟校准）
 
 ### 中期
-- [ ] Windows WHVP 端到端 VM 启动验证
 - [ ] Linux KVM 端到端 VM 启动验证
-- [ ] Alpine Linux rootfs + 内核准备脚本
-- [ ] virtio-net / virtio-block 设备实现
-- [ ] VM 生命周期 CLI 接通（`vsb vm start/stop`）
+- [ ] virtio-net / virtio-block 设备实现（`root=/dev/vda` 挂载 rootfs）
 
 ### 长期
 - [ ] macOS HVF 后端实现

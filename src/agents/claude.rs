@@ -74,10 +74,12 @@ impl ClaudeClient {
         })
     }
 
+    /// 当前使用的模型名。
     pub fn model(&self) -> &str {
         &self.model
     }
 
+    /// 设置单次请求最大 token 数。
     pub fn with_max_tokens(mut self, n: u32) -> Self {
         self.max_tokens = n;
         self
@@ -169,14 +171,18 @@ impl ClaudeClient {
 
 /// 对话消息。
 pub struct Message {
+    /// 消息角色（"user" 或 "assistant"）
     pub role: &'static str,
+    /// 消息文本内容
     pub content: String,
 }
 
 impl Message {
+    /// 构造 user 角色消息。
     pub fn user(content: impl Into<String>) -> Self {
         Self { role: "user", content: content.into() }
     }
+    /// 构造 assistant 角色消息。
     pub fn assistant(content: impl Into<String>) -> Self {
         Self { role: "assistant", content: content.into() }
     }

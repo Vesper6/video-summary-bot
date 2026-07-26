@@ -11,6 +11,7 @@ pub struct SerialPort {
 }
 
 impl SerialPort {
+    /// 创建串口设备（空输出 buffer）。
     pub fn new() -> Self {
         Self {
             buffer: Mutex::new(Vec::new()),

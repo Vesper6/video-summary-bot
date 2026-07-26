@@ -19,11 +19,14 @@ pub struct Danmaku {
 
 /// 弹幕抓取器（占位实现）。
 pub struct DanmakuCrawler {
+    /// 视频页面 URL
     pub video_url: String,
+    /// 最大抓取条数
     pub max_count: usize,
 }
 
 impl DanmakuCrawler {
+    /// 创建弹幕抓取器。
     pub fn new(video_url: String, max_count: usize) -> Self {
         Self { video_url, max_count }
     }

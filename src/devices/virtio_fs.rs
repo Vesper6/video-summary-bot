@@ -15,6 +15,7 @@ pub struct VirtioFs {
 }
 
 impl VirtioFs {
+    /// 创建共享目录（默认可读写）。
     pub fn new(tag: impl Into<String>, host_path: PathBuf) -> Self {
         Self {
             tag: tag.into(),
@@ -23,11 +24,13 @@ impl VirtioFs {
         }
     }
 
+    /// 设为只读挂载（builder 风格）。
     pub fn read_only(mut self) -> Self {
         self.read_only = true;
         self
     }
 
+    /// 返回设备类型（Fs）。
     pub fn device_type(&self) -> VirtioDeviceType {
         VirtioDeviceType::Fs
     }
