@@ -3,13 +3,13 @@ name = "video-summary-bot"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.75"
-description = "Cross-platform VMM that runs AI agents in hardware-isolated micro VMs"
+description = "视频总结工具：yt-dlp 下载字幕 + Claude AI 分析"
 license = "MIT"
 repository = "https://github.com/Vesper6/video-summary-bot"
 homepage = "https://github.com/Vesper6/video-summary-bot"
 readme = "README.md"
-keywords = ["vmm", "hypervisor", "microvm", "agent", "kvm"]
-categories = ["virtualization", "command-line-utilities", "api-bindings"]
+keywords = ["video", "summary", "claude", "yt-dlp", "cli"]
+categories = ["command-line-utilities", "multimedia::video"]
 authors = ["Vesper6 <your.email@example.com>"]
 
 [[bin]]
@@ -80,52 +80,9 @@ tempfile = "3.13"
 
 # 并发原语
 parking_lot = "0.12"
-dashmap = "6.1"
 
-# 加密 / 编码
+# 编码（多模态图片用）
 base64 = "0.22"
-sha2 = "0.10"
-
-# 字节序
-byteorder = "1.5"
-
-# 位字段
-bitflags = { version = "2.6", features = ["serde"] }
-
-# 字节序转换（设备模型需要）
-zerocopy = { version = "0.8", features = ["derive"] }
-
-# =============================================
-# Windows 平台：WHVP（Windows Hypervisor Platform）
-# =============================================
-[target.'cfg(target_os = "windows")'.dependencies]
-# WHVP API（可选 feature，未启用时不拉取）
-windows = { version = "0.58", optional = true, features = [
-    "Win32_Foundation",
-    "Win32_System_Hypervisor",
-    "Win32_System_Memory",
-    "Win32_System_Threading",
-    "Win32_Networking",
-    "Win32_Networking_WinSock",
-    "Win32_Storage_FileSystem",
-] }
-
-# =============================================
-# macOS 平台：Hypervisor Framework
-# =============================================
-[target.'cfg(target_os = "macos")'.dependencies]
-# macOS Hypervisor Framework 绑定（可选 feature，未启用时不拉取）
-hypervisor = { version = "0.0.8", optional = true }
-
-# =============================================
-# Linux 平台：KVM
-# =============================================
-[target.'cfg(target_os = "linux")'.dependencies]
-# KVM ioctl 接口（可选 feature，未启用时不拉取）
-kvm-ioctls = { version = "0.13", optional = true }
-# 版本需与 kvm-ioctls 0.13 内部使用的 kvm-bindings 一致，否则类型不兼容
-kvm-bindings = { version = "0.6", optional = true }
-libc = "0.2"
 
 # =============================================
 # Feature flags
@@ -139,15 +96,6 @@ api = []
 
 # 启用桌面 GUI（原生窗口，tao + wry WebView2）
 gui = ["dep:tao", "dep:wry"]
-
-# 启用 Windows WHVP 后端（Windows 上推荐）
-whvp = ["dep:windows"]
-
-# 启用 macOS Hypervisor Framework 后端
-hvf = ["dep:hypervisor"]
-
-# 启用 Linux KVM 后端
-kvm = ["dep:kvm-ioctls", "dep:kvm-bindings"]
 
 # =============================================
 # 开发依赖

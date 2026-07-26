@@ -72,8 +72,10 @@ pub struct SubtitleFetcher {
     ffmpeg_path: Option<PathBuf>,
     /// cookies 文件路径（可选）
     cookies_file: Option<PathBuf>,
-    /// 超时（秒）
+    /// 字幕/元数据操作超时（秒）
     timeout_secs: u64,
+    /// 视频下载超时（秒，视觉分析用，比字幕慢很多）
+    download_timeout_secs: u64,
 }
 
 impl SubtitleFetcher {
@@ -90,12 +92,19 @@ impl SubtitleFetcher {
             ffmpeg_path,
             cookies_file,
             timeout_secs: 60,
+            download_timeout_secs: 600,
         })
     }
 
     /// 指定 cookies 文件路径。
     pub fn with_cookies(mut self, path: PathBuf) -> Self {
         self.cookies_file = Some(path);
+        self
+    }
+
+    /// 设置视频下载超时（秒）。
+    pub fn with_download_timeout(mut self, secs: u64) -> Self {
+        self.download_timeout_secs = secs;
         self
     }
 
@@ -156,10 +165,11 @@ impl SubtitleFetcher {
 
         let mut cmd = self.base_cmd();
         cmd.args([
-            "--write-subs",     // 内嵌字幕
-            "--write-auto-sub", // 自动字幕（AI 生成）
+            "--write-subs",     // UP主上传的 CC 字幕
+            "--write-auto-sub", // 自动/AI 字幕
             "--sub-lang",
-            "zh-Hans,zh,zh-CN,en",
+            // ai-zh = B站 AI 字幕；其余覆盖 B站/YouTube 常见中英文轨
+            "ai-zh,zh-Hans,zh-Hant,zh-CN,zh,zh-TW,en",
             "--sub-format",
             "vtt/best",
             "--skip-download", // 不下载视频
@@ -176,6 +186,39 @@ impl SubtitleFetcher {
         // 查找下载的字幕文件
         let sub_text = find_and_parse_subtitle(out_dir)?;
         Ok(sub_text)
+    }
+
+    /// 下载视频文件（限制到 ≤480p 省流量/token），返回本地路径。
+    ///
+    /// 供 `--vision` 视觉分析抽帧使用。较慢，用 `download_timeout_secs`。
+    pub async fn download_video(&self, url: &str, out_dir: &Path) -> Result<PathBuf> {
+        let out_tmpl = out_dir.join("video.%(ext)s").to_string_lossy().to_string();
+
+        let mut cmd = self.base_cmd();
+        cmd.args([
+            // 优先 ≤480p 的视频+音频，退而求其次任意 ≤480p，再退到最佳
+            "-f",
+            "bv*[height<=480]+ba/b[height<=480]/best[height<=480]/best",
+            // 合并成单文件（需要 ffmpeg）
+            "--merge-output-format",
+            "mp4",
+            "--no-playlist",
+            "--quiet",
+            "--no-warnings",
+            "-o",
+            &out_tmpl,
+            url,
+        ]);
+
+        run_with_timeout(cmd, self.download_timeout_secs).await?;
+
+        find_video_file(out_dir)
+            .ok_or_else(|| Error::Crawler("视频下载完成但未找到输出文件".into()))
+    }
+
+    /// 当前 ffmpeg 路径（视觉抽帧模块复用）。
+    pub fn ffmpeg_path(&self) -> Option<&Path> {
+        self.ffmpeg_path.as_deref()
     }
 
     /// 构建基础命令（注入 cookies + ffmpeg）。
@@ -301,6 +344,22 @@ async fn run_with_timeout(mut cmd: tokio::process::Command, timeout_secs: u64) -
     }
 
     Ok(stdout)
+}
+
+/// 在目录中查找下载好的视频文件（取最大的媒体文件，避开残留分片）。
+fn find_video_file(dir: &Path) -> Option<PathBuf> {
+    let exts = ["mp4", "mkv", "webm", "flv", "mov", "m4v"];
+    std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .and_then(|e| e.to_str())
+                .map(|e| exts.contains(&e.to_lowercase().as_str()))
+                .unwrap_or(false)
+        })
+        .max_by_key(|p| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0))
 }
 
 /// 在目录中查找字幕文件并解析。

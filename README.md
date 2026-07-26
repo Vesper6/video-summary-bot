@@ -1,50 +1,53 @@
 # Video Summary Bot
 
-> 🎬 视频总结机器人 — 用 yt-dlp + Claude AI 自动分析视频内容，基于 Rust 构建
+> 🎬 视频总结工具 — 用 yt-dlp 下载字幕 + Claude AI 分析，自动生成结构化视频总结，支持视觉分析
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue.svg)]()
 [![CI](https://github.com/Vesper6/video-summary-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/Vesper6/video-summary-bot/actions/workflows/ci.yml)
 [![LLM](https://img.shields.io/badge/LLM-Claude%20Sonnet-cc785c.svg)]()
-[![Status](https://img.shields.io/badge/status-demo%20ready-green.svg)]()
+[![Vision](https://img.shields.io/badge/vision-multimodal-9b59b6.svg)]()
 
-Video Summary Bot（`vsb`）是一个命令行工具，通过 **yt-dlp 下载字幕** + **Claude AI 分析**，自动对 B 站、YouTube 等平台的视频生成结构化总结报告。
+**Video Summary Bot**（`vsb`）是一个跨平台命令行工具（含可选桌面 GUI），通过 **yt-dlp 下载字幕** + **Claude AI 分析**，自动对 B 站、YouTube 等平台的视频生成结构化总结报告。
 
-底层基于 Rust 构建，集成了一个跨平台轻量级 VMM（参考 [TenBox](https://github.com/78/tenbox) 架构），未来支持在硬件隔离的 micro VM 中运行 AI Agent。
+除了字幕总结，它还支持 **视觉分析**：下载视频、按时间间隔抽帧，让 Claude 结合画面与字幕做多模态总结。
+
+底层基于 Rust + Tokio 构建，跨平台运行于 Windows / macOS / Linux。
 
 ---
 
 ## 📑 目录
 
-- [当前功能](#-当前功能)
+- [核心功能](#-核心功能)
 - [快速开始](#-快速开始)
 - [使用方式](#-使用方式)
+- [视觉分析](#-视觉分析)
+- [B 站 / YouTube cookies 配置](#-b-站--youtube-cookies-配置)
 - [健康检查](#-健康检查)
-- [架构概览](#-架构概览)
 - [技术栈](#-技术栈)
 - [项目结构](#-项目结构)
 - [配置说明](#-配置说明)
 - [开发路线](#-开发路线)
 - [贡献指南](#-贡献指南)
+- [许可证](#-许可证)
 
 ---
 
-## ✅ 当前功能
+## ✅ 核心功能
 
 | 功能 | 状态 | 说明 |
 |------|------|------|
 | `vsb summarize --url` | ✅ 可用 | yt-dlp 获取字幕 + Claude 分析 |
 | `vsb summarize --text` | ✅ 可用 | 直接传入文字稿，Claude 总结 |
-| `vsb summarize --text-file` | ✅ 可用 | 读取 .vtt/.srt/.txt 字幕文件 |
+| `vsb summarize --text-file` | ✅ 可用 | 读取 .vtt / .srt / .txt 字幕文件 |
+| `vsb summarize --vision` | ✅ 可用 | 视觉分析：抽帧 + Claude 多模态结合画面+字幕总结 |
 | `vsb doctor all` | ✅ 可用 | 健康检查（必选/可选依赖） |
-| `vsb info` | ✅ 可用 | 系统信息（平台/hypervisor/工具） |
-| `vsb vm *` | ✅ 可用 | VM 生命周期（ls/create/edit/start/stop/rm/logs，与 GUI 共用存储） |
-| `vsb serve` / GUI | ✅ 可用 | HTTP API + Web 管理界面（VM 管理 / 视频总结 / SSE 控制台） |
-| `vsb vm boot` | ✅ 可用 | 端到端 VM 启动（WHVP 已验证内核引导；需 assets/ 镜像） |
-| `vsb crawl` | 🚧 骨架 | 评论/弹幕抓取（需 micro VM） |
-| WHVP 后端 | 🔧 实现 | 内核可引导并输出串口日志；PIT/VirtIO-block 进行中 |
-| KVM 后端 | 🔧 实现 | 核心 API 已实现，待 Linux 测试 |
+| `vsb info` | ✅ 可用 | 系统信息（平台/工具可用性） |
+| `vsb serve --port 8080` | ✅ 可用 | HTTP API + Web GUI |
+| `vsb gui` | ✅ 可用 | 桌面窗口应用（tao + wry） |
+
+**总结深度**（`--level`）：`light`（简要，3-5 要点）/ `standard`（标准，默认）/ `full`（深度分析）。
 
 ---
 
@@ -55,10 +58,10 @@ Video Summary Bot（`vsb`）是一个命令行工具，通过 **yt-dlp 下载字
 | 依赖 | 是否必须 | 说明 |
 |------|---------|------|
 | Rust 1.75+ | ✅ 必须 | `rustup` 安装 |
-| yt-dlp | ✅ 必须 | `pip install yt-dlp` |
-| Claude API Token | ✅ 必须 | CC Switch 或 `ANTHROPIC_AUTH_TOKEN` 环境变量 |
-| FFmpeg | 可选 | 提升字幕转换质量 |
-| cookies.txt | 可选 | 访问 B 站 / YouTube 需要登录的内容 |
+| yt-dlp | ✅ 必须* | `pip install yt-dlp`（*仅 `--text` / `--text-file` 时可省略） |
+| Claude API Token | ✅ 必须 | `ANTHROPIC_API_KEY` 或 `ANTHROPIC_AUTH_TOKEN` |
+| FFmpeg | 视觉分析必须 | `--vision` 抽帧需要（普通字幕总结不需要） |
+| cookies.txt | 可选 | 访问 B 站 / YouTube 需登录的内容 |
 
 ### 2. 构建
 
@@ -66,31 +69,32 @@ Video Summary Bot（`vsb`）是一个命令行工具，通过 **yt-dlp 下载字
 git clone https://github.com/Vesper6/video-summary-bot.git
 cd video-summary-bot
 
+# 默认构建（CLI）
 cargo build --release
+
+# 启用 HTTP API + 桌面 GUI
+cargo build --release --features "api gui"
 
 # 可选：加入 PATH
 cp target/release/video-summary-bot ~/.local/bin/vsb   # Linux/macOS
-# 或手动添加 target/release/ 到 PATH（Windows）
+# 或手动把 target/release/ 加入 PATH（Windows）
 ```
 
 ### 3. 配置 Claude API
 
-CC Switch 用户无需额外配置，环境变量已自动注入。
-
-手动配置：
-
 ```bash
-# .env 文件（复制 .env.example）
 cp .env.example .env
 # 编辑 .env，填写：
-ANTHROPIC_AUTH_TOKEN=sk-ant-xxxxx
-# 或
 ANTHROPIC_API_KEY=sk-ant-xxxxx
+# 或（兼容 CC Switch 代理）
+ANTHROPIC_AUTH_TOKEN=sk-ant-xxxxx
 
-# 如果使用代理 API（CC Switch）
+# 使用代理 API（CC Switch）时可选配置：
 ANTHROPIC_BASE_URL=https://api.your-proxy.com
 ANTHROPIC_MODEL=claude-sonnet-4-6
 ```
+
+> CC Switch 用户通常无需额外配置，环境变量已自动注入。
 
 ### 4. 验证环境
 
@@ -98,30 +102,11 @@ ANTHROPIC_MODEL=claude-sonnet-4-6
 vsb doctor all
 ```
 
-输出示例（就绪状态）：
-
-```
-🩺 Video Summary Bot - 健康检查
-────────────────────────────────────────
-
-【必选】
-  ✅ Claude API                     Claude API ready (model: claude-sonnet-4-6)
-  ✅ yt-dlp                         yt-dlp
-
-【可选】
-  ⬜ Hypervisor (VM)                feature 'whvp' not enabled
-  ✅ FFmpeg (ASR)                   ffmpeg
-  ⬜ cookies.txt (B站/YouTube)       未找到 - 用浏览器插件导出（见下方）
-  ⬜ assets/ (VM kernels)           assets/ does not exist
-
-────────────────────────────────────────
-✅ 必选依赖全部就绪（2/2）
-   运行 `vsb summarize --url <URL>` 开始总结视频
-```
-
 ---
 
 ## 📖 使用方式
+
+Video Summary Bot 支持三种输入模式，外加可选的视觉分析。
 
 ### 模式一：URL 自动获取字幕（推荐）
 
@@ -137,10 +122,13 @@ vsb summarize --url "..." --level light     # 简要（3-5 要点）
 vsb summarize --url "..." --level standard  # 标准（默认）
 vsb summarize --url "..." --level full      # 深度分析
 
+# 指定输出语言
+vsb summarize --url "..." --language zh-CN
+
 # 保存为 Markdown 文件
 vsb summarize --url "..." --output ./output/
 
-# 跳过 yt-dlp，直接让 Claude 根据知识分析
+# 跳过字幕下载，直接让 Claude 根据其知识分析
 vsb summarize --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ" --no-subtitle
 ```
 
@@ -155,7 +143,7 @@ vsb summarize --text-file subtitle.vtt
 vsb summarize --text-file transcript.txt --level full --output ./output/
 ```
 
-### 模式三：从 yt-dlp 手动下载字幕后分析
+### 模式三：手动下载字幕后分析
 
 ```bash
 # 先用 yt-dlp 下载字幕
@@ -169,14 +157,43 @@ vsb summarize --text-file "视频标题.zh-Hans.vtt" --level standard
 
 ---
 
+## 👁️ 视觉分析
+
+普通总结只看字幕。**视觉分析**（`--vision`）会下载视频、抽取关键帧，让 Claude
+**结合画面 + 字幕**做多模态总结 —— 适合演示、教程、无字幕或字幕信息量不足的视频。
+
+```bash
+# 开启视觉分析（默认每 30 秒抽 1 帧）
+vsb summarize --url "https://www.youtube.com/watch?v=xxxxx" --vision
+
+# 自定义抽帧间隔（秒）
+vsb summarize --url "..." --vision --vision-interval 15
+
+# 结合总结深度与输出
+vsb summarize --url "..." --vision --level full --output ./output/
+```
+
+**工作原理与限制：**
+
+- 需要 **yt-dlp**（下载视频）+ **FFmpeg**（抽帧），两者都必须安装。
+- 默认每 **30 秒抽 1 帧**，帧数有**硬上限 40 帧**；超长视频会自动拉大间隔，避免一次塞入过多图片导致 token 爆炸。
+- 视频下载限制到 **≤480p**，节省流量与 token。
+- 帧以 base64 image block 通过 **Anthropic Messages API** 发送给 Claude（Sonnet / Opus 均为视觉模型）。
+- 视觉分析需要下载整段视频，因此比只下字幕**慢很多**，所以它是**可选功能**，只有加 `--vision` 才启用。
+
+---
+
 ## 🍪 B 站 / YouTube cookies 配置
 
-B 站和 YouTube 需要登录才能获取完整字幕。导出 cookies：
+B 站和 YouTube 的部分内容需要登录才能获取完整字幕/视频。yt-dlp 的字幕语言列表已包含
+B 站 AI 生成字幕的语言代码 **`ai-zh`**（以及 `zh-Hans` / `zh-Hant` / `zh-CN` / `zh` / `zh-TW` / `en`）。
 
-1. 安装浏览器插件 **[Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)**（Chrome/Edge）
+导出 cookies：
+
+1. 安装浏览器插件 **[Get cookies.txt LOCALLY](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)**（Chrome / Edge）
 2. 登录 bilibili.com（或 youtube.com）
 3. 点击插件图标 → **Export**，保存为 `cookies.txt`
-4. 将文件放到项目根目录，或通过 `--cookies` 参数指定路径
+4. 将文件放到项目根目录（自动检测），或用 `--cookies` 参数指定路径
 
 ```bash
 # 项目根目录放 cookies.txt（自动检测）
@@ -191,62 +208,14 @@ vsb summarize --url "..." --cookies /path/to/cookies.txt
 ## 🩺 健康检查
 
 ```bash
-vsb doctor all   # 完整健康检查
-vsb info         # 系统信息
+vsb doctor all   # 完整健康检查（必选/可选依赖分级）
+vsb info         # 系统信息（平台 / CPU / 工具可用性）
 ```
 
-`vsb info` 输出：
+`vsb doctor all` 会检查：
 
-```
-version       : 0.1.0
-platform      : windows
-hypervisor    : WHVP
-cpu count     : 32
-total memory  : 0 MB
-kernel family : windows
-yt-dlp        : ✓ yt-dlp (可用)
-claude        : ✓ Claude API ready (model: claude-sonnet-4-6) (可用)
-```
-
----
-
-## 🏗️ 架构概览
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Host OS                              │
-│                                                          │
-│   vsb (Rust CLI)                                         │
-│   ┌──────────┐   ┌────────────┐   ┌──────────────────┐  │
-│   │   CLI    │   │  Claude    │   │  SubtitleFetcher │  │
-│   │  (clap)  │──▶│  Client   │   │  (yt-dlp wrapper)│  │
-│   └──────────┘   └─────┬──────┘   └────────┬─────────┘  │
-│                        │                   │             │
-│                  Anthropic API         yt-dlp process    │
-│                  (CC Switch)           (字幕下载)         │
-│                                                          │
-│   ┌──────────────────────────────────────────────────┐   │
-│   │  VMM Core（骨架，待接通）                         │   │
-│   │  WHVP(Windows) / KVM(Linux) / HVF(macOS)        │   │
-│   └──────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
-
-**当前实现的数据流：**
-
-```
-视频 URL
-  │
-  ├── yt-dlp → 字幕(.vtt) + 元数据(标题/时长/简介)
-  │                    │
-  │              parse_vtt() 清理时间戳
-  │                    │
-  └──────────────▶ Claude API
-                       │
-                  结构化总结报告
-                       │
-                  stdout + 可选 .md 文件
-```
+- **必选**：Claude API、yt-dlp
+- **可选**：FFmpeg（视觉分析需要）、cookies.txt（登录内容需要）
 
 ---
 
@@ -257,20 +226,23 @@ claude        : ✓ Claude API ready (model: claude-sonnet-4-6) (可用)
 | 语言 | Rust 1.75+（Edition 2021） |
 | 异步运行时 | Tokio（rt-multi-thread + process） |
 | CLI 框架 | clap 4 |
-| HTTP 客户端 | reqwest（rustls-tls） |
-| LLM | Anthropic Messages API（兼容 CC Switch） |
+| HTTP 客户端 | reqwest（rustls-tls），调用 Anthropic Messages API |
+| HTTP 服务 | axum（`api` feature） |
+| 桌面 GUI | tao + wry（`gui` feature） |
+| LLM | Anthropic Messages API（含多模态 image block，兼容 CC Switch） |
 | 字幕下载 | yt-dlp（subprocess） |
+| 视频抽帧 | FFmpeg（subprocess） |
 | 序列化 | serde + serde_json |
 | 日志 | tracing + tracing-subscriber |
 | 临时文件 | tempfile |
 
-### 平台 Hypervisor 后端
+### Cargo Features
 
-| 平台 | 后端 | 状态 |
-|------|------|------|
-| Windows 10/11 | WHVP（Windows Hypervisor Platform） | 🔧 核心实现 |
-| macOS 11+ | Hypervisor Framework（HVF） | 🚧 骨架 |
-| Linux 5.10+ | KVM（via kvm-ioctls） | 🔧 核心实现 |
+| Feature | 说明 |
+|---------|------|
+| `default` | 空（仅 CLI） |
+| `api` | 启用 `vsb serve` 的 HTTP API + Web GUI |
+| `gui` | 启用 `vsb gui` 桌面窗口（tao + wry） |
 
 ---
 
@@ -280,46 +252,30 @@ claude        : ✓ Claude API ready (model: claude-sonnet-4-6) (可用)
 video-summary-bot/
 ├── src/
 │   ├── main.rs              # 程序入口
-│   ├── lib.rs               # 库根（13 个模块）
+│   ├── lib.rs               # 库根
 │   ├── error.rs             # 统一错误类型
-│   ├── cli/                 # CLI 命令
-│   │   ├── mod.rs           # 顶层路由
-│   │   ├── summary.rs       # summarize / crawl ✅
-│   │   ├── vm.rs            # vm ls/create/start/... 🚧
-│   │   └── system.rs        # doctor / info ✅
 │   ├── agents/
-│   │   ├── claude.rs        # Claude API 客户端 ✅
-│   │   └── planner.rs       # 任务规划 🚧
+│   │   └── claude.rs        # Anthropic Messages API 客户端（含多模态 send_with_images）
 │   ├── crawler/
-│   │   ├── subtitle.rs      # yt-dlp 字幕下载 ✅
-│   │   ├── comments.rs      # 评论抓取 🚧
-│   │   └── danmaku.rs       # 弹幕抓取 🚧
-│   ├── hypervisor/
-│   │   ├── mod.rs           # Hypervisor trait
-│   │   ├── windows.rs       # WHVP 实现 🔧
-│   │   ├── linux.rs         # KVM 实现 🔧
-│   │   └── macos.rs         # HVF 骨架 🚧
-│   ├── vmm/                 # VMM 核心 🚧
-│   ├── devices/             # virtio 设备 🚧
-│   ├── image/               # 磁盘镜像 🚧
-│   ├── network/             # NAT/DHCP 🚧
-│   ├── summarizer/          # ASR + 时间线 🚧
-│   ├── config/              # 配置加载
-│   └── utils/               # 工具函数
+│   │   ├── subtitle.rs      # yt-dlp 字幕下载 + 视频下载（VTT/SRT 解析）
+│   │   └── vision.rs        # FFmpeg 抽帧 + base64 编码
+│   ├── cli/                 # summarize / doctor / info / serve / gui
+│   │   ├── summary.rs       # summarize 命令
+│   │   ├── system.rs        # doctor / info
+│   │   └── gui.rs           # gui 命令入口
+│   ├── api/mod.rs           # HTTP API（/summarize /doctor /system/info）+ Web GUI 静态服务
+│   ├── daemon/mod.rs        # serve 命令
+│   ├── gui/                 # 桌面窗口（tao + wry）
+│   ├── config/             # 配置加载
+│   └── utils/              # 工具函数
 ├── .github/
-│   ├── workflows/
-│   │   ├── ci.yml           # 3 平台 CI（lint/build/test）
-│   │   └── release.yml      # 跨平台 release 构建
-│   ├── dependabot.yml
-│   └── ISSUE_TEMPLATE/      # Bug / Feature / Question 模板
-├── docs/
-│   └── tenbox-reference.md
+│   └── workflows/          # CI（3 平台 lint/build/test）+ release
 ├── Cargo.toml
 ├── .env.example
+├── CLAUDE.md               # Claude Code 项目级指引
+├── COLLAB.md               # 协作记录
 └── CONTRIBUTING.md
 ```
-
-图例：✅ 已实现可用 | 🔧 核心已实现待测试 | 🚧 骨架/未实现
 
 ---
 
@@ -333,14 +289,14 @@ cp .env.example .env
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `ANTHROPIC_AUTH_TOKEN` | Claude API Token（CC Switch 用这个） | — |
 | `ANTHROPIC_API_KEY` | 标准 Anthropic API Key | — |
+| `ANTHROPIC_AUTH_TOKEN` | Claude API Token（CC Switch 用这个） | — |
 | `ANTHROPIC_BASE_URL` | API 代理地址 | `https://api.anthropic.com` |
 | `ANTHROPIC_MODEL` | 使用的模型 | `claude-sonnet-4-6` |
 | `LOG_FORMAT` | 日志格式（`text` / `json`） | `text` |
 | `RUST_LOG` | 日志级别（`info` / `debug` / `warn`） | `warn` |
-| `VM_DEFAULT_CPUS` | VM 默认 vCPU 数（未来使用） | `2` |
-| `VM_DEFAULT_MEMORY_MB` | VM 默认内存（未来使用） | `2048` |
+
+> `ANTHROPIC_API_KEY` 与 `ANTHROPIC_AUTH_TOKEN` 二选一即可。
 
 ---
 
@@ -348,40 +304,24 @@ cp .env.example .env
 
 ### 已完成
 - [x] 项目基础（Cargo.toml、CI/CD、Issue 模板、Dependabot）
-- [x] 全模块骨架（45 个 .rs 文件）
-- [x] Claude API 客户端（兼容 CC Switch 代理）
-- [x] yt-dlp 字幕下载器（VTT/SRT 解析）
-- [x] `summarize` 命令（3 种输入模式：URL/文字稿/文件）
-- [x] `doctor` 健康检查（必选/可选分级）
-- [x] Windows WHVP 后端骨架（partition 创建、内存映射、vCPU run loop）
-- [x] Linux KVM 后端骨架（mmap、KVM_CREATE_VM、vCPU 寄存器、run loop）
-- [x] GitHub Actions CI（3 平台 lint/build/test）
-- [x] Release 工作流（5 架构跨平台构建）
-
-- [x] HTTP API（`vsb serve`，axum 路由：VM CRUD + start/stop + SSE 控制台流 + summarize）
-- [x] Web GUI（VM 管理 / 编辑对话框 / 视频总结页 / 实时控制台）
-- [x] VM 生命周期 CLI 接通（`vsb vm ls/create/edit/start/stop/reboot/rm/logs`）
-- [x] Windows WHVP 端到端 VM 启动验证（Linux 6.12 内核引导 + 串口输出）
-- [x] Alpine Linux rootfs + 内核准备脚本（`scripts/prepare-guest.sh` / `quick-rootfs.sh`）
+- [x] Anthropic Messages API 客户端（兼容 CC Switch 代理）
+- [x] yt-dlp 字幕下载器（VTT/SRT 解析，含 B 站 `ai-zh` AI 字幕）
+- [x] `summarize` 命令（3 种输入模式：URL / 文字稿 / 文件）
+- [x] 视觉分析（`--vision`）：yt-dlp 下视频 + FFmpeg 抽帧 + Claude 多模态总结
+- [x] `doctor` 健康检查（必选/可选分级）+ `info` 系统信息
+- [x] HTTP API（`vsb serve`，axum）+ Web GUI
+- [x] 桌面窗口应用（`vsb gui`，tao + wry）
+- [x] GitHub Actions CI（3 平台 lint/build/test）+ Release 工作流
 
 ### 进行中 / 近期
-- [ ] B 站完整字幕获取（需 cookies，端到端验证）
-- [x] PIT (8253/8254) 定时器模拟（TSC/LAPIC 校准，解决 guest 卡在 port 0x42）
-- [x] virtio-blk 块设备（`root=/dev/vda` 挂载 rootfs.img，读/写/flush/GET_ID）
-- [x] WHVP MMIO 指令解码 + LAPIC IRQ 注入（VirtIO 设备中断）
+- [ ] B 站完整字幕获取端到端验证（cookies）
+- [ ] 视觉分析抽帧策略优化（关键帧检测）
 - [ ] `summarize` 输出 HTML 格式
 
-### 中期
-- [ ] Linux KVM 端到端 VM 启动验证
-- [ ] virtio-net 设备（NAT 网络，在 micro VM 内运行爬虫）
-
 ### 长期
-- [ ] macOS HVF 后端实现
-- [ ] virtio-fs 共享目录
-- [ ] ASR 转写（Whisper 集成）
-- [ ] 评论/弹幕爬虫（在 micro VM 内运行）
-- [ ] SPICE 远程桌面（可选）
-- [ ] 守护进程（systemd / Windows Service）
+- [ ] ASR 转写（无字幕视频，Whisper 集成）
+- [ ] 时间线分段结构化输出
+- [ ] 批量/队列总结
 
 ---
 

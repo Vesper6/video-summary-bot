@@ -1,4 +1,4 @@
-//! video-summary-bot: 跨平台 VMM，为 AI Agent 提供 micro VM 沙箱
+//! video-summary-bot: yt-dlp + Claude 视频总结工具
 //!
 //! 入口文件：解析命令行参数并分发到对应的子命令处理器。
 

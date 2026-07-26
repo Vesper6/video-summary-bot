@@ -2,7 +2,7 @@
 
 pub mod binary;
 pub mod logging;
-pub mod resource;
+pub mod probe;
 
 /// 项目版本。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

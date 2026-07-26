@@ -1,4 +1,4 @@
-//! 视频总结 / 抓取子命令。
+//! 视频总结子命令。
 
 use clap::ValueEnum;
 
@@ -28,18 +28,6 @@ impl CrawlLevel {
             CrawlLevel::Full => "full",
         }
     }
-}
-
-/// 抓取类型。
-#[derive(Debug, Clone, Copy, ValueEnum, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum CrawlType {
-    /// 仅评论
-    Comments,
-    /// 仅弹幕
-    Danmaku,
-    /// 评论 + 弹幕
-    Both,
 }
 
 /// summarize 命令参数。
@@ -76,24 +64,14 @@ pub struct SummarizeCmd {
     /// 跳过字幕下载，直接让 Claude 分析 URL（无需 yt-dlp）
     #[arg(long)]
     pub no_subtitle: bool,
-}
 
-/// crawl 命令参数。
-#[derive(Debug, clap::Args)]
-pub struct CrawlCmd {
-    /// 视频 URL
+    /// 开启视觉分析：下载视频并抽帧，让 Claude 结合画面总结（需 yt-dlp + ffmpeg）
     #[arg(long)]
-    pub url: String,
-    /// 抓取类型（评论 / 弹幕 / 两者）
-    #[arg(long, value_enum, default_value_t = CrawlType::Both)]
-    #[arg(rename_all = "kebab-case")]
-    pub r#type: CrawlType,
-    /// 抓取档位
-    #[arg(long, value_enum, default_value_t = CrawlLevel::Standard)]
-    pub level: CrawlLevel,
-    /// 输出目录
-    #[arg(long)]
-    pub output: Option<std::path::PathBuf>,
+    pub vision: bool,
+
+    /// 视觉抽帧间隔（秒），仅 --vision 时生效
+    #[arg(long, default_value_t = crate::crawler::vision::DEFAULT_INTERVAL_SECS)]
+    pub vision_interval: u32,
 }
 
 // =============================================
@@ -140,58 +118,142 @@ pub async fn run_summarize(cmd: SummarizeCmd, _config: &AppConfig) -> Result<i32
     let url = cmd.url.as_deref().unwrap();
     println!("🔍 视频：{url}");
 
-    let video_text = if cmd.no_subtitle {
+    // yt-dlp 下载器（字幕或视觉都需要）
+    let fetcher = if cmd.no_subtitle && !cmd.vision {
         None
     } else {
-        print!("📥 正在用 yt-dlp 获取字幕/元数据...");
         match SubtitleFetcher::new() {
-            Err(e) => {
-                println!(" ⚠️  yt-dlp 不可用（{e}），直接让 Claude 分析");
-                None
-            }
-            Ok(mut fetcher) => {
+            Ok(mut f) => {
                 if let Some(cookies) = &cmd.cookies {
-                    fetcher = fetcher.with_cookies(cookies.clone());
+                    f = f.with_cookies(cookies.clone());
                 }
-                match fetcher.fetch(url).await {
-                    Ok(vt) => {
-                        println!(" ✅");
-                        println!("📌 标题：{}", vt.title);
-                        if let Some(dur) = vt.duration {
-                            println!("⏱  时长：{}:{:02}", dur as u64 / 60, dur as u64 % 60);
-                        }
-                        if vt.subtitle.is_some() {
-                            println!("📝 字幕：已获取");
-                        } else {
-                            println!("📝 字幕：未找到（将使用标题+简介）");
-                        }
-                        Some(vt)
-                    }
-                    Err(e) => {
-                        println!(" ⚠️  获取失败（{e}），直接让 Claude 分析");
-                        None
-                    }
-                }
+                Some(f)
+            }
+            Err(e) => {
+                println!("⚠️  yt-dlp 不可用（{e}）");
+                None
             }
         }
     };
 
-    // 构造 prompt
-    let (prompt_text, title) = match &video_text {
+    // 字幕 / 元数据
+    let video_text = if cmd.no_subtitle {
+        None
+    } else if let Some(f) = &fetcher {
+        print!("📥 正在用 yt-dlp 获取字幕/元数据...");
+        match f.fetch(url).await {
+            Ok(vt) => {
+                println!(" ✅");
+                println!("📌 标题：{}", vt.title);
+                if let Some(dur) = vt.duration {
+                    println!("⏱  时长：{}:{:02}", dur as u64 / 60, dur as u64 % 60);
+                }
+                println!(
+                    "📝 字幕：{}",
+                    if vt.subtitle.is_some() {
+                        "已获取"
+                    } else {
+                        "未找到（将使用标题+简介）"
+                    }
+                );
+                Some(vt)
+            }
+            Err(e) => {
+                println!(" ⚠️  获取失败（{e}）");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // 视觉抽帧（--vision）
+    let frames = if cmd.vision {
+        capture_frames(fetcher.as_ref(), url, cmd.vision_interval, &video_text).await
+    } else {
+        None
+    };
+
+    // 文字内容
+    let (text_content, title) = match &video_text {
         Some(vt) => (vt.to_analysis_text(), Some(vt.title.clone())),
         None => (
             format!(
-                "视频链接：{url}\n\n注意：无法直接获取视频内容，请根据已有知识尽力分析，\
-                 并在报告开头说明限制。"
+                "视频链接：{url}\n\n注意：无法直接获取视频文字内容，请结合{}尽力分析，\
+                 并在报告开头说明限制。",
+                if frames.is_some() {
+                    "画面截图"
+                } else {
+                    "已有知识"
+                }
             ),
             None,
         ),
     };
 
     println!("─────────────────────────────────────");
-    let result = call_claude(&claude, &prompt_text, &cmd).await?;
+    let system = build_system_prompt(&cmd.language);
+    let result = if let Some(fs) = &frames {
+        let note = format!(
+            "\n\n【视频画面】随本消息附带 {} 张视频截图（每 {} 秒 1 帧，按时间先后排列）。\
+             请结合字幕文字与画面内容综合总结，画面能补充字幕没有的信息（场景、图表、演示等）。",
+            fs.images.len(),
+            fs.interval_secs
+        );
+        let prompt = build_user_prompt(cmd.level, &format!("{text_content}{note}"));
+        println!("💬 正在结合画面分析...\n");
+        claude
+            .send_with_images(&system, &prompt, &fs.images)
+            .await?
+    } else {
+        call_claude(&claude, &text_content, &cmd).await?
+    };
     print_and_save(&result, url, title.as_deref(), &cmd.output)?;
     Ok(0)
+}
+
+/// 下载视频并抽帧（失败返回 None，降级为纯字幕分析）。
+async fn capture_frames(
+    fetcher: Option<&SubtitleFetcher>,
+    url: &str,
+    interval: u32,
+    video_text: &Option<crate::crawler::subtitle::VideoText>,
+) -> Option<crate::crawler::vision::FrameSet> {
+    let Some(f) = fetcher else {
+        println!("⚠️  --vision 需要 yt-dlp，跳过画面分析");
+        return None;
+    };
+    let tmp = match tempfile::TempDir::new() {
+        Ok(t) => t,
+        Err(e) => {
+            println!("⚠️  创建临时目录失败（{e}），跳过画面分析");
+            return None;
+        }
+    };
+    println!("🎞️  正在下载视频并抽帧（每 {interval} 秒 1 帧）...");
+    let video = match f.download_video(url, tmp.path()).await {
+        Ok(v) => v,
+        Err(e) => {
+            println!("⚠️  视频下载失败（{e}），跳过画面分析");
+            return None;
+        }
+    };
+    let duration = video_text.as_ref().and_then(|v| v.duration);
+    match crate::crawler::vision::extract_frames(&video, f.ffmpeg_path(), interval, duration).await
+    {
+        Ok(fs) => {
+            println!(
+                "✅ 抽取 {} 帧（间隔 {} 秒）",
+                fs.images.len(),
+                fs.interval_secs
+            );
+            Some(fs)
+        }
+        Err(e) => {
+            println!("⚠️  抽帧失败（{e}），跳过画面分析");
+            None
+        }
+    }
 }
 
 /// 分析纯文字稿。
@@ -272,6 +334,10 @@ pub struct SummarizeApiRequest {
     pub language: Option<String>,
     /// 跳过 yt-dlp 字幕下载
     pub no_subtitle: Option<bool>,
+    /// 开启视觉分析（下载视频抽帧）
+    pub vision: Option<bool>,
+    /// 视觉抽帧间隔（秒）
+    pub vision_interval: Option<u32>,
 }
 
 /// `POST /api/summarize` 响应体。
@@ -285,6 +351,8 @@ pub struct SummarizeApiResponse {
     pub markdown: String,
     /// 是否成功获取到字幕
     pub subtitle_fetched: bool,
+    /// 视觉分析实际使用的画面帧数（0 = 未做视觉分析）
+    pub frames_analyzed: usize,
 }
 
 /// GUI / HTTP API 的视频总结入口（不打印到 stdout）。
@@ -293,43 +361,83 @@ pub async fn summarize_api(req: SummarizeApiRequest) -> Result<SummarizeApiRespo
     let level = req.level.unwrap_or(CrawlLevel::Standard);
     let language = req.language.unwrap_or_else(|| "zh-CN".to_string());
     let no_subtitle = req.no_subtitle.unwrap_or(false);
+    let vision = req.vision.unwrap_or(false);
+    let vision_interval = req
+        .vision_interval
+        .unwrap_or(crate::crawler::vision::DEFAULT_INTERVAL_SECS);
     let url = req.url.trim();
     if url.is_empty() {
         return Err(Error::Other("url is required".into()));
     }
 
-    let video_text = if no_subtitle {
+    let fetcher = if no_subtitle && !vision {
         None
     } else {
-        match SubtitleFetcher::new() {
-            Ok(fetcher) => match fetcher.fetch(url).await {
-                Ok(vt) => Some(vt),
-                Err(e) => {
-                    tracing::warn!("subtitle fetch failed, falling back to URL-only: {e}");
-                    None
-                }
-            },
-            Err(e) => {
-                tracing::warn!("yt-dlp unavailable, falling back to URL-only: {e}");
-                None
+        SubtitleFetcher::new()
+            .map_err(|e| tracing::warn!("yt-dlp unavailable: {e}"))
+            .ok()
+    };
+
+    let video_text = if no_subtitle {
+        None
+    } else if let Some(f) = &fetcher {
+        f.fetch(url)
+            .await
+            .map_err(|e| tracing::warn!("subtitle fetch failed: {e}"))
+            .ok()
+    } else {
+        None
+    };
+
+    let frames = if vision {
+        match &fetcher {
+            Some(f) => {
+                capture_frames_quiet(
+                    f,
+                    url,
+                    vision_interval,
+                    video_text.as_ref().and_then(|v| v.duration),
+                )
+                .await
             }
+            None => None,
         }
+    } else {
+        None
     };
 
     let (content, title) = match &video_text {
         Some(vt) => (vt.to_analysis_text(), Some(vt.title.clone())),
         None => (
             format!(
-                "视频链接：{url}\n\n注意：无法直接获取视频内容，请根据已有知识尽力分析，\
-                 并在报告开头说明限制。"
+                "视频链接：{url}\n\n注意：无法直接获取视频文字内容，请结合{}尽力分析，\
+                 并在报告开头说明限制。",
+                if frames.is_some() {
+                    "画面截图"
+                } else {
+                    "已有知识"
+                }
             ),
             None,
         ),
     };
 
     let system = build_system_prompt(&language);
-    let user_prompt = build_user_prompt(level, &content);
-    let markdown = claude.send_with_system(&system, &user_prompt).await?;
+    let markdown = if let Some(fs) = &frames {
+        let note = format!(
+            "\n\n【视频画面】随本消息附带 {} 张视频截图（每 {} 秒 1 帧，按时间先后排列）。\
+             请结合字幕文字与画面内容综合总结。",
+            fs.images.len(),
+            fs.interval_secs
+        );
+        let prompt = build_user_prompt(level, &format!("{content}{note}"));
+        claude
+            .send_with_images(&system, &prompt, &fs.images)
+            .await?
+    } else {
+        let prompt = build_user_prompt(level, &content);
+        claude.send_with_system(&system, &prompt).await?
+    };
 
     Ok(SummarizeApiResponse {
         title,
@@ -339,7 +447,27 @@ pub async fn summarize_api(req: SummarizeApiRequest) -> Result<SummarizeApiRespo
             .as_ref()
             .map(|v| v.subtitle.is_some())
             .unwrap_or(false),
+        frames_analyzed: frames.as_ref().map(|f| f.images.len()).unwrap_or(0),
     })
+}
+
+/// 下载视频并抽帧（HTTP API 用，静默；失败降级为 None）。
+async fn capture_frames_quiet(
+    fetcher: &SubtitleFetcher,
+    url: &str,
+    interval: u32,
+    duration: Option<f64>,
+) -> Option<crate::crawler::vision::FrameSet> {
+    let tmp = tempfile::TempDir::new().ok()?;
+    let video = fetcher
+        .download_video(url, tmp.path())
+        .await
+        .map_err(|e| tracing::warn!("video download failed: {e}"))
+        .ok()?;
+    crate::crawler::vision::extract_frames(&video, fetcher.ffmpeg_path(), interval, duration)
+        .await
+        .map_err(|e| tracing::warn!("frame extraction failed: {e}"))
+        .ok()
 }
 
 /// 打印结果 + 可选保存文件。
@@ -362,16 +490,6 @@ fn print_and_save(
         println!("✅ 已保存：{}", path.display());
     }
     Ok(())
-}
-
-/// 运行 crawl 子命令（尚未实现，依赖 micro VM）。
-pub async fn run_crawl(cmd: CrawlCmd, _config: &AppConfig) -> Result<i32> {
-    eprintln!("❌ crawl 命令需要 micro VM 支持，尚未实现。");
-    eprintln!(
-        "   提示：使用 `vsb summarize --url {}` 获取视频总结。",
-        cmd.url
-    );
-    Ok(1)
 }
 
 fn slugify(s: &str) -> String {

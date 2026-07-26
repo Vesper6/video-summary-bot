@@ -1,10 +1,8 @@
 //! AI Agent 模块。
 //!
 //! - [`claude`] — Claude Code 集成
-//! - [`planner`] — 任务规划器（待补充）
 
 pub mod claude;
-pub mod planner;
 
 /// Agent 类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

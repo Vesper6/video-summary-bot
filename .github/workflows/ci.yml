@@ -7,9 +7,9 @@
 # - 任何 Pull Request
 #
 # 在以下平台测试：
-# - Ubuntu (latest) — KVM
-# - Windows (latest) — WHVP
-# - macOS (latest) — Hypervisor Framework
+# - Ubuntu (latest)
+# - Windows (latest)
+# - macOS (latest)
 #
 # 检查项：
 # - cargo fmt --check
@@ -52,12 +52,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 特性按平台选择：kvm 仅 Linux（kvm-ioctls 是 unix-only），whvp 仅 Windows
+        # 统一启用 api,gui 特性（不再有平台专属 hypervisor 后端）
         include:
           - os: ubuntu-latest
-            features: api,gui,kvm
+            features: api,gui
           - os: windows-latest
-            features: api,gui,whvp
+            features: api,gui
           - os: macos-latest
             features: api,gui
 
@@ -99,9 +99,9 @@ jobs:
         profile: [debug, release]
         include:
           - os: ubuntu-latest
-            features: api,gui,kvm
+            features: api,gui
           - os: windows-latest
-            features: api,gui,whvp
+            features: api,gui
           - os: macos-latest
             features: api,gui
 
@@ -150,9 +150,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            features: api,gui,kvm
+            features: api,gui
           - os: windows-latest
-            features: api,gui,whvp
+            features: api,gui
           - os: macos-latest
             features: api,gui
 

@@ -50,21 +50,13 @@ pub async fn run_doctor(_cmd: DoctorCmd, _config: &AppConfig) -> Result<i32> {
     // ── 可选依赖 ────────────────────────────────
     println!("\n【可选】");
 
-    // 3. Hypervisor（运行 micro VM 才需要）
-    let hv = crate::hypervisor::probe();
-    print_check("Hypervisor (VM)", &hv, true);
-
-    // 4. FFmpeg（音频转写才需要）
+    // 3. FFmpeg（视觉分析抽帧才需要）
     let ffmpeg = crate::utils::binary::probe_named("ffmpeg");
-    print_check("FFmpeg (ASR)", &ffmpeg, true);
+    print_check("FFmpeg (视觉分析)", &ffmpeg, true);
 
-    // 5. cookies.txt（B站/YouTube 登录）
+    // 4. cookies.txt（B站/YouTube 登录）
     let cookies = probe_cookies();
     print_check("cookies.txt (B站/YouTube)", &cookies, true);
-
-    // 6. assets/ 目录（micro VM 内核）
-    let assets = crate::utils::resource::probe();
-    print_check("assets/ (VM kernels)", &assets, true);
 
     // ── 汇总 ───────────────────────────────────
     println!("\n────────────────────────────────────────");
@@ -91,7 +83,7 @@ pub async fn run_doctor(_cmd: DoctorCmd, _config: &AppConfig) -> Result<i32> {
     }
 }
 
-fn print_check(name: &str, result: &crate::hypervisor::ProbeResult, optional: bool) {
+fn print_check(name: &str, result: &crate::utils::probe::ProbeResult, optional: bool) {
     let prefix = if result.is_ok() {
         "  ✅"
     } else if optional {
@@ -108,8 +100,8 @@ fn print_check(name: &str, result: &crate::hypervisor::ProbeResult, optional: bo
     }
 }
 
-fn probe_ytdlp() -> crate::hypervisor::ProbeResult {
-    use crate::hypervisor::ProbeResult;
+fn probe_ytdlp() -> crate::utils::probe::ProbeResult {
+    use crate::utils::probe::ProbeResult;
 
     // 从 PATH 查找
     let names = if cfg!(windows) {
@@ -143,8 +135,8 @@ fn probe_ytdlp() -> crate::hypervisor::ProbeResult {
     ProbeResult::err("yt-dlp", "未安装 - 运行: pip install yt-dlp")
 }
 
-fn probe_cookies() -> crate::hypervisor::ProbeResult {
-    use crate::hypervisor::ProbeResult;
+fn probe_cookies() -> crate::utils::probe::ProbeResult {
+    use crate::utils::probe::ProbeResult;
 
     let candidates = [
         "./cookies.txt",
@@ -178,8 +170,6 @@ pub struct SystemInfo {
     pub version: String,
     /// 操作系统（如 linux / windows / macos）
     pub platform: String,
-    /// hypervisor 后端名称
-    pub hypervisor: String,
     /// CPU 核数
     pub cpu_count: usize,
     /// 物理内存总量（MB）
@@ -200,7 +190,6 @@ impl SystemInfo {
         Self {
             version: env!("CARGO_PKG_VERSION").to_string(),
             platform: std::env::consts::OS.to_string(),
-            hypervisor: crate::hypervisor::backend_name().to_string(),
             cpu_count: num_cpus(),
             total_memory_mb: total_memory_mb(),
             kernel: std::env::consts::FAMILY.to_string(),
@@ -213,7 +202,6 @@ impl SystemInfo {
     pub fn print_table(&self) {
         println!("version       : {}", self.version);
         println!("platform      : {}", self.platform);
-        println!("hypervisor    : {}", self.hypervisor);
         println!("cpu count     : {}", self.cpu_count);
         println!("total memory  : {} MB", self.total_memory_mb);
         println!("kernel family : {}", self.kernel);

@@ -129,3 +129,16 @@ Base: `/api`
 - ✅ clippy -D warnings 清零（含 ~300 个 missing_docs），CI 应恢复绿色
 
 剩余大项就是 PIT/APIC + VirtIO-Block（#2/#3），下一轮做。
+
+---
+
+**[C4] 2026-07-26** 大重构：项目从「micro VM + 视频总结」彻底瘦身为**纯视频总结工具**。
+
+- 🗑️ **删除全部虚拟机代码**：hypervisor（WHVP/KVM/HVF）、vmm、devices、image、network、guest_control 及相关 CLI/API/GUI（`vsb vm *`、VM CRUD 端点、SSE 控制台）全部移除；不再有 whvp/kvm/hvf feature，`default` 现为空。
+- ✅ **保留并强化视频总结**：`summarize`（URL / 文字稿 / 字幕文件三种输入）、`doctor`、`info`、`serve`（HTTP API + Web GUI）、`gui`（tao+wry）。
+- 🆕 **B 站 AI 字幕**：yt-dlp `--sub-lang` 加入 `ai-zh`（+ zh-Hans/zh-Hant/zh-CN/zh/zh-TW/en）。
+- 🆕 **Claude 多模态**：`agents/claude.rs` 新增 `send_with_images`（base64 image block）。
+- 🆕 **视觉分析 `--vision`**：`crawler/vision.rs` 用 FFmpeg 抽帧（默认每 30 秒 1 帧，硬上限 40 帧，视频限 ≤480p），结合画面+字幕由 Claude 总结；`crawler/subtitle.rs` 增加视频下载。
+- 📄 已同步重写 `README.md` / `CLAUDE.md`，去掉全部 VM/KVM/沙箱内容。
+
+分工说明失效：不再有 hypervisor/vmm 后端，API 契约表中的 VM 相关端点已随代码删除，仅 `/summarize`、`/doctor`、`/system/info` 保留。

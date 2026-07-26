@@ -7,7 +7,7 @@
 //! - ANTHROPIC_MODEL（默认 claude-sonnet-4-6）
 
 use crate::error::{Error, Result};
-use crate::hypervisor::ProbeResult;
+use crate::utils::probe::ProbeResult;
 
 /// Claude Code 探测结果。
 pub fn probe() -> ProbeResult {
@@ -94,6 +94,40 @@ impl ClaudeClient {
         self.call_api(body).await
     }
 
+    /// 发送带图片的多模态消息（视觉分析用）。
+    ///
+    /// 图片以 base64 image block 形式排在文字前面（Anthropic 推荐顺序：
+    /// 先给图，后提问）。图片过多时调用方应先降采样。
+    pub async fn send_with_images(
+        &self,
+        system: &str,
+        prompt: &str,
+        images: &[ImageInput],
+    ) -> Result<String> {
+        let mut content: Vec<serde_json::Value> = images
+            .iter()
+            .map(|img| {
+                serde_json::json!({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img.media_type,
+                        "data": img.base64_data,
+                    }
+                })
+            })
+            .collect();
+        content.push(serde_json::json!({ "type": "text", "text": prompt }));
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": content}]
+        });
+        self.call_api(body).await
+    }
+
     /// 多轮对话接口。
     pub async fn chat(&self, messages: &[Message]) -> Result<String> {
         let msgs: Vec<serde_json::Value> = messages
@@ -154,6 +188,15 @@ impl ClaudeClient {
     }
 }
 
+/// 多模态图片输入（base64 编码）。
+#[derive(Debug, Clone)]
+pub struct ImageInput {
+    /// MIME 类型，如 "image/jpeg"
+    pub media_type: String,
+    /// base64 编码的图片数据（不含 data: 前缀）
+    pub base64_data: String,
+}
+
 /// 对话消息。
 pub struct Message {
     /// 消息角色（"user" 或 "assistant"）
@@ -176,5 +219,71 @@ impl Message {
             role: "assistant",
             content: content.into(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_client(base_url: String) -> ClaudeClient {
+        ClaudeClient {
+            http: reqwest::Client::new(),
+            api_key: "test-key".into(),
+            base_url,
+            model: "claude-test".into(),
+            max_tokens: 100,
+        }
+    }
+
+    #[tokio::test]
+    async fn images_are_sent_as_base64_blocks() {
+        let mut server = mockito::Server::new_async().await;
+        // 断言请求体里含符合 Anthropic 规范的 image block：
+        // type=image、source.type=base64、media_type、data，且文字排在图片之后
+        let m = server
+            .mock("POST", "/v1/messages")
+            .match_body(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::Regex(r#""type":"image""#.into()),
+                mockito::Matcher::Regex(r#""type":"base64""#.into()),
+                mockito::Matcher::Regex(r#""media_type":"image/jpeg""#.into()),
+                mockito::Matcher::Regex(r#""data":"QUJD""#.into()),
+                // 文字问题也在同一条消息里（key 顺序随 serde_json 字母序）
+                mockito::Matcher::Regex(r#""text":"问题""#.into()),
+            ]))
+            .with_status(200)
+            .with_body(r#"{"content":[{"type":"text","text":"看到画面了"}]}"#)
+            .create_async()
+            .await;
+
+        let client = test_client(server.url());
+        let images = vec![ImageInput {
+            media_type: "image/jpeg".into(),
+            base64_data: "QUJD".into(), // base64("ABC")
+        }];
+        let reply = client
+            .send_with_images("你是分析助手", "问题", &images)
+            .await
+            .unwrap();
+
+        assert_eq!(reply, "看到画面了");
+        m.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn text_only_request_has_no_image_block() {
+        let mut server = mockito::Server::new_async().await;
+        let m = server
+            .mock("POST", "/v1/messages")
+            .match_body(mockito::Matcher::Regex(r#""content":"纯文字问题""#.into()))
+            .with_status(200)
+            .with_body(r#"{"content":[{"type":"text","text":"ok"}]}"#)
+            .create_async()
+            .await;
+
+        let client = test_client(server.url());
+        let reply = client.send_with_system("sys", "纯文字问题").await.unwrap();
+        assert_eq!(reply, "ok");
+        m.assert_async().await;
     }
 }

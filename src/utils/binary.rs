@@ -1,6 +1,6 @@
 //! 探测外部二进制命令是否可用。
 
-use crate::hypervisor::ProbeResult;
+use crate::utils::probe::ProbeResult;
 
 /// 探测命令是否在 PATH 中（返回通用标签）。
 pub fn probe(cmd: &str) -> ProbeResult {
