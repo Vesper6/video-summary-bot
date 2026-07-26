@@ -28,7 +28,10 @@ pub struct DanmakuCrawler {
 impl DanmakuCrawler {
     /// 创建弹幕抓取器。
     pub fn new(video_url: String, max_count: usize) -> Self {
-        Self { video_url, max_count }
+        Self {
+            video_url,
+            max_count,
+        }
     }
 
     /// 抓取弹幕（在 VM 内调用 headless Chromium）。

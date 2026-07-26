@@ -174,8 +174,6 @@ pub fn create() -> Result<Arc<dyn Hypervisor>> {
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        Err(crate::error::Error::Vmm(
-            "unsupported platform".to_string(),
-        ))
+        Err(crate::error::Error::Vmm("unsupported platform".to_string()))
     }
 }

@@ -33,8 +33,8 @@
 //! 0x100 Config[0..0xFF] RW  设备专用配置空间
 //! ```
 
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 use crate::error::Result;
 
@@ -43,55 +43,55 @@ use crate::error::Result;
 // =============================================
 
 /// MagicValue 寄存器（R，恒为 0x74726976 "virt"）
-pub const VIRTIO_MMIO_MAGIC_VALUE:      u64 = 0x000;
+pub const VIRTIO_MMIO_MAGIC_VALUE: u64 = 0x000;
 /// Version 寄存器（R，2 = VirtIO 1.0+）
-pub const VIRTIO_MMIO_VERSION:          u64 = 0x004;
+pub const VIRTIO_MMIO_VERSION: u64 = 0x004;
 /// DeviceID 寄存器（R，设备类型编号）
-pub const VIRTIO_MMIO_DEVICE_ID:        u64 = 0x008;
+pub const VIRTIO_MMIO_DEVICE_ID: u64 = 0x008;
 /// VendorID 寄存器（R，0x554D4551 "QEMU"）
-pub const VIRTIO_MMIO_VENDOR_ID:        u64 = 0x00C;
+pub const VIRTIO_MMIO_VENDOR_ID: u64 = 0x00C;
 /// DeviceFeatures 寄存器（R，设备支持的 feature bits）
-pub const VIRTIO_MMIO_DEVICE_FEATURES:  u64 = 0x010;
+pub const VIRTIO_MMIO_DEVICE_FEATURES: u64 = 0x010;
 /// DeviceFeaturesSel 寄存器（W，选择 feature word）
-pub const VIRTIO_MMIO_DEVICE_FEAT_SEL:  u64 = 0x014;
+pub const VIRTIO_MMIO_DEVICE_FEAT_SEL: u64 = 0x014;
 /// DriverFeatures 寄存器（W，driver 确认的 feature bits）
-pub const VIRTIO_MMIO_DRIVER_FEATURES:  u64 = 0x020;
+pub const VIRTIO_MMIO_DRIVER_FEATURES: u64 = 0x020;
 /// DriverFeaturesSel 寄存器（W，选择 feature word）
-pub const VIRTIO_MMIO_DRIVER_FEAT_SEL:  u64 = 0x024;
+pub const VIRTIO_MMIO_DRIVER_FEAT_SEL: u64 = 0x024;
 /// QueueSel 寄存器（W，选择 virtqueue 编号）
-pub const VIRTIO_MMIO_QUEUE_SEL:        u64 = 0x030;
+pub const VIRTIO_MMIO_QUEUE_SEL: u64 = 0x030;
 /// QueueNumMax 寄存器（R，最大队列深度）
-pub const VIRTIO_MMIO_QUEUE_NUM_MAX:    u64 = 0x034;
+pub const VIRTIO_MMIO_QUEUE_NUM_MAX: u64 = 0x034;
 /// QueueNum 寄存器（W，driver 设置的队列深度）
-pub const VIRTIO_MMIO_QUEUE_NUM:        u64 = 0x038;
+pub const VIRTIO_MMIO_QUEUE_NUM: u64 = 0x038;
 /// QueueReady 寄存器（RW，队列就绪标志）
-pub const VIRTIO_MMIO_QUEUE_READY:      u64 = 0x044;
+pub const VIRTIO_MMIO_QUEUE_READY: u64 = 0x044;
 /// QueueNotify 寄存器（W，通知设备 doorbell）
-pub const VIRTIO_MMIO_QUEUE_NOTIFY:     u64 = 0x050;
+pub const VIRTIO_MMIO_QUEUE_NOTIFY: u64 = 0x050;
 /// InterruptStatus 寄存器（R，中断原因）
 pub const VIRTIO_MMIO_INTERRUPT_STATUS: u64 = 0x060;
 /// InterruptACK 寄存器（W，中断确认）
-pub const VIRTIO_MMIO_INTERRUPT_ACK:    u64 = 0x064;
+pub const VIRTIO_MMIO_INTERRUPT_ACK: u64 = 0x064;
 /// Status 寄存器（RW，设备状态字节）
-pub const VIRTIO_MMIO_STATUS:           u64 = 0x070;
+pub const VIRTIO_MMIO_STATUS: u64 = 0x070;
 /// QueueDescLow 寄存器（W，Descriptor Table 低 32 位）
-pub const VIRTIO_MMIO_QUEUE_DESC_LOW:   u64 = 0x080;
+pub const VIRTIO_MMIO_QUEUE_DESC_LOW: u64 = 0x080;
 /// QueueDescHigh 寄存器（W，Descriptor Table 高 32 位）
-pub const VIRTIO_MMIO_QUEUE_DESC_HIGH:  u64 = 0x084;
+pub const VIRTIO_MMIO_QUEUE_DESC_HIGH: u64 = 0x084;
 /// QueueDriverLow 寄存器（W，Available Ring 低 32 位）
 pub const VIRTIO_MMIO_QUEUE_DRIVER_LOW: u64 = 0x090;
 /// QueueDriverHigh 寄存器（W，Available Ring 高 32 位）
-pub const VIRTIO_MMIO_QUEUE_DRIVER_HIGH:u64 = 0x094;
+pub const VIRTIO_MMIO_QUEUE_DRIVER_HIGH: u64 = 0x094;
 /// QueueDeviceLow 寄存器（W，Used Ring 低 32 位）
 pub const VIRTIO_MMIO_QUEUE_DEVICE_LOW: u64 = 0x0A0;
 /// QueueDeviceHigh 寄存器（W，Used Ring 高 32 位）
-pub const VIRTIO_MMIO_QUEUE_DEVICE_HIGH:u64 = 0x0A4;
+pub const VIRTIO_MMIO_QUEUE_DEVICE_HIGH: u64 = 0x0A4;
 /// ConfigGeneration 寄存器（R，配置代数）
-pub const VIRTIO_MMIO_CONFIG_GENERATION:u64 = 0x0FC;
+pub const VIRTIO_MMIO_CONFIG_GENERATION: u64 = 0x0FC;
 /// 设备专用配置空间起始偏移
-pub const VIRTIO_MMIO_CONFIG:           u64 = 0x100;
+pub const VIRTIO_MMIO_CONFIG: u64 = 0x100;
 /// 每个设备占用的 MMIO 空间大小
-pub const VIRTIO_MMIO_SIZE:             u64 = 0x200;
+pub const VIRTIO_MMIO_SIZE: u64 = 0x200;
 
 // =============================================
 // VirtIO 设备 ID
@@ -102,19 +102,19 @@ pub const VIRTIO_MMIO_SIZE:             u64 = 0x200;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VirtioDeviceId {
     /// virtio-net 网络设备
-    Net     = 1,
+    Net = 1,
     /// virtio-blk 块设备
-    Block   = 2,
+    Block = 2,
     /// virtio-console 控制台
     Console = 3,
     /// virtio-rng 随机数发生器
-    Rng     = 4,
+    Rng = 4,
     /// virtio-gpu 图形设备
-    Gpu     = 16,
+    Gpu = 16,
     /// virtio-input 输入设备
-    Input   = 18,
+    Input = 18,
     /// virtio-fs 共享文件系统
-    Fs      = 26,
+    Fs = 26,
 }
 
 // =============================================
@@ -122,26 +122,26 @@ pub enum VirtioDeviceId {
 // =============================================
 
 /// 状态位：Guest 已发现设备
-pub const VIRTIO_STATUS_ACKNOWLEDGE:       u32 = 1;
+pub const VIRTIO_STATUS_ACKNOWLEDGE: u32 = 1;
 /// 状态位：Guest 已加载 driver
-pub const VIRTIO_STATUS_DRIVER:            u32 = 2;
+pub const VIRTIO_STATUS_DRIVER: u32 = 2;
 /// 状态位：driver 初始化完成，设备可用
-pub const VIRTIO_STATUS_DRIVER_OK:         u32 = 4;
+pub const VIRTIO_STATUS_DRIVER_OK: u32 = 4;
 /// 状态位：feature 协商完成
-pub const VIRTIO_STATUS_FEATURES_OK:       u32 = 8;
+pub const VIRTIO_STATUS_FEATURES_OK: u32 = 8;
 /// 状态位：设备出错，需要重置
-pub const VIRTIO_STATUS_DEVICE_NEEDS_RESET:u32 = 64;
+pub const VIRTIO_STATUS_DEVICE_NEEDS_RESET: u32 = 64;
 /// 状态位：driver 放弃该设备
-pub const VIRTIO_STATUS_FAILED:            u32 = 128;
+pub const VIRTIO_STATUS_FAILED: u32 = 128;
 
 // =============================================
 // Virtqueue 描述符表（VirtIO 1.2 §2.7）
 // =============================================
 
 /// Descriptor 标志
-pub const VIRTQ_DESC_F_NEXT:     u16 = 1;
+pub const VIRTQ_DESC_F_NEXT: u16 = 1;
 /// Descriptor 标志：buffer 由设备写入（device-writable）
-pub const VIRTQ_DESC_F_WRITE:    u16 = 2;
+pub const VIRTQ_DESC_F_WRITE: u16 = 2;
 /// Descriptor 标志：指向间接描述符表
 pub const VIRTQ_DESC_F_INDIRECT: u16 = 4;
 
@@ -150,13 +150,13 @@ pub const VIRTQ_DESC_F_INDIRECT: u16 = 4;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VirtqDesc {
     /// Buffer 的 Guest 物理地址
-    pub addr:  u64,
+    pub addr: u64,
     /// Buffer 长度（字节）
-    pub len:   u32,
+    pub len: u32,
     /// 描述符标志（VIRTQ_DESC_F_*）
     pub flags: u16,
     /// 下一个描述符索引（NEXT 标志有效时）
-    pub next:  u16,
+    pub next: u16,
 }
 
 /// Virtqueue 状态
@@ -165,11 +165,11 @@ pub struct Virtqueue {
     /// 队列深度
     pub size: u16,
     /// Descriptor Table GPA
-    pub desc_addr:   u64,
+    pub desc_addr: u64,
     /// Available Ring GPA
-    pub avail_addr:  u64,
+    pub avail_addr: u64,
     /// Used Ring GPA
-    pub used_addr:   u64,
+    pub used_addr: u64,
     /// 就绪标志
     pub ready: bool,
     /// 上次处理的 available index
@@ -189,7 +189,9 @@ pub trait VirtioDevice: Send + Sync {
     /// 处理 Virtqueue 通知（doorbell，queue_idx 指定哪个队列）。
     fn notify(&self, queue_idx: u32, queues: &[Virtqueue]) -> Result<()>;
     /// 读取设备配置空间（偏移 offset，大小 size）。
-    fn read_config(&self, _offset: u64, _size: u8) -> u32 { 0 }
+    fn read_config(&self, _offset: u64, _size: u8) -> u32 {
+        0
+    }
     /// 写设备配置空间。
     fn write_config(&self, _offset: u64, _value: u32, _size: u8) {}
 }
@@ -206,20 +208,20 @@ pub struct VirtioMmio {
 
 #[derive(Default)]
 struct VirtioMmioState {
-    status:          u32,
+    status: u32,
     device_feat_sel: u32,
     driver_feat_sel: u32,
     driver_features: [u32; 2],
-    queue_sel:       u32,
-    queues:          Vec<Virtqueue>,
-    interrupt_status:u32,
-    config_gen:      u32,
+    queue_sel: u32,
+    queues: Vec<Virtqueue>,
+    interrupt_status: u32,
+    config_gen: u32,
 }
 
 impl VirtioMmio {
-    const MAGIC:   u32 = 0x7472_6976; // "virt"
+    const MAGIC: u32 = 0x7472_6976; // "virt"
     const VERSION: u32 = 2;
-    const VENDOR:  u32 = 0x5545_4D51; // "QEMU"
+    const VENDOR: u32 = 0x5545_4D51; // "QEMU"
 
     /// 创建 MMIO 传输层实例（默认预分配 4 个队列）。
     pub fn new(base_addr: u64, device: Arc<dyn VirtioDevice>) -> Self {
@@ -239,30 +241,41 @@ impl VirtioMmio {
         let state = self.state.lock();
 
         match offset {
-            VIRTIO_MMIO_MAGIC_VALUE      => Self::MAGIC,
-            VIRTIO_MMIO_VERSION          => Self::VERSION,
-            VIRTIO_MMIO_DEVICE_ID        => self.device.device_id() as u32,
-            VIRTIO_MMIO_VENDOR_ID        => Self::VENDOR,
+            VIRTIO_MMIO_MAGIC_VALUE => Self::MAGIC,
+            VIRTIO_MMIO_VERSION => Self::VERSION,
+            VIRTIO_MMIO_DEVICE_ID => self.device.device_id() as u32,
+            VIRTIO_MMIO_VENDOR_ID => Self::VENDOR,
 
-            VIRTIO_MMIO_DEVICE_FEATURES  => {
+            VIRTIO_MMIO_DEVICE_FEATURES => {
                 let feat = self.device.device_features();
-                if state.device_feat_sel == 0 { feat as u32 }
-                else { (feat >> 32) as u32 }
+                if state.device_feat_sel == 0 {
+                    feat as u32
+                } else {
+                    (feat >> 32) as u32
+                }
             }
 
-            VIRTIO_MMIO_QUEUE_NUM_MAX    => {
+            VIRTIO_MMIO_QUEUE_NUM_MAX => {
                 let q = state.queue_sel as usize;
-                if q < state.queues.len() { 256 } else { 0 }
+                if q < state.queues.len() {
+                    256
+                } else {
+                    0
+                }
             }
 
-            VIRTIO_MMIO_QUEUE_READY      => {
+            VIRTIO_MMIO_QUEUE_READY => {
                 let q = state.queue_sel as usize;
-                if q < state.queues.len() && state.queues[q].ready { 1 } else { 0 }
+                if q < state.queues.len() && state.queues[q].ready {
+                    1
+                } else {
+                    0
+                }
             }
 
             VIRTIO_MMIO_INTERRUPT_STATUS => state.interrupt_status,
-            VIRTIO_MMIO_STATUS           => state.status,
-            VIRTIO_MMIO_CONFIG_GENERATION=> state.config_gen,
+            VIRTIO_MMIO_STATUS => state.status,
+            VIRTIO_MMIO_CONFIG_GENERATION => state.config_gen,
 
             o if (VIRTIO_MMIO_CONFIG..VIRTIO_MMIO_CONFIG + 0x100).contains(&o) => {
                 self.device.read_config(o - VIRTIO_MMIO_CONFIG, size)
@@ -280,24 +293,26 @@ impl VirtioMmio {
         let mut state = self.state.lock();
 
         match offset {
-            VIRTIO_MMIO_DEVICE_FEAT_SEL  => state.device_feat_sel = value,
-            VIRTIO_MMIO_DRIVER_FEAT_SEL  => state.driver_feat_sel = value,
+            VIRTIO_MMIO_DEVICE_FEAT_SEL => state.device_feat_sel = value,
+            VIRTIO_MMIO_DRIVER_FEAT_SEL => state.driver_feat_sel = value,
 
-            VIRTIO_MMIO_DRIVER_FEATURES  => {
+            VIRTIO_MMIO_DRIVER_FEATURES => {
                 let sel = state.driver_feat_sel as usize;
-                if sel < 2 { state.driver_features[sel] = value; }
+                if sel < 2 {
+                    state.driver_features[sel] = value;
+                }
             }
 
-            VIRTIO_MMIO_QUEUE_SEL        => state.queue_sel = value,
+            VIRTIO_MMIO_QUEUE_SEL => state.queue_sel = value,
 
-            VIRTIO_MMIO_QUEUE_NUM        => {
+            VIRTIO_MMIO_QUEUE_NUM => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
                     state.queues[q].size = value as u16;
                 }
             }
 
-            VIRTIO_MMIO_QUEUE_READY      => {
+            VIRTIO_MMIO_QUEUE_READY => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
                     state.queues[q].ready = value != 0;
@@ -305,47 +320,53 @@ impl VirtioMmio {
                 }
             }
 
-            VIRTIO_MMIO_QUEUE_NOTIFY     => {
-                let queues: Vec<_> = state.queues.iter().map(|q| Virtqueue {
-                    size: q.size,
-                    desc_addr: q.desc_addr,
-                    avail_addr: q.avail_addr,
-                    used_addr: q.used_addr,
-                    ready: q.ready,
-                    last_avail_idx: q.last_avail_idx,
-                }).collect();
+            VIRTIO_MMIO_QUEUE_NOTIFY => {
+                let queues: Vec<_> = state
+                    .queues
+                    .iter()
+                    .map(|q| Virtqueue {
+                        size: q.size,
+                        desc_addr: q.desc_addr,
+                        avail_addr: q.avail_addr,
+                        used_addr: q.used_addr,
+                        ready: q.ready,
+                        last_avail_idx: q.last_avail_idx,
+                    })
+                    .collect();
                 drop(state);
                 if let Err(e) = self.device.notify(value, &queues) {
                     tracing::error!("virtio notify error: {e}");
                 }
             }
 
-            VIRTIO_MMIO_INTERRUPT_ACK    => {
+            VIRTIO_MMIO_INTERRUPT_ACK => {
                 state.interrupt_status &= !value;
             }
 
-            VIRTIO_MMIO_STATUS           => {
+            VIRTIO_MMIO_STATUS => {
                 state.status = value;
                 if value == 0 {
-                    tracing::info!("virtio device reset (device_id={})",
-                        self.device.device_id() as u32);
+                    tracing::info!(
+                        "virtio device reset (device_id={})",
+                        self.device.device_id() as u32
+                    );
                     state.config_gen = state.config_gen.wrapping_add(1);
                 }
                 tracing::debug!("virtio status={:#x}", value);
             }
 
-            VIRTIO_MMIO_QUEUE_DESC_LOW   => {
+            VIRTIO_MMIO_QUEUE_DESC_LOW => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
                     state.queues[q].desc_addr =
                         (state.queues[q].desc_addr & 0xFFFF_FFFF_0000_0000) | value as u64;
                 }
             }
-            VIRTIO_MMIO_QUEUE_DESC_HIGH  => {
+            VIRTIO_MMIO_QUEUE_DESC_HIGH => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
-                    state.queues[q].desc_addr =
-                        (state.queues[q].desc_addr & 0x0000_0000_FFFF_FFFF) | ((value as u64) << 32);
+                    state.queues[q].desc_addr = (state.queues[q].desc_addr & 0x0000_0000_FFFF_FFFF)
+                        | ((value as u64) << 32);
                 }
             }
             VIRTIO_MMIO_QUEUE_DRIVER_LOW => {
@@ -355,11 +376,12 @@ impl VirtioMmio {
                         (state.queues[q].avail_addr & 0xFFFF_FFFF_0000_0000) | value as u64;
                 }
             }
-            VIRTIO_MMIO_QUEUE_DRIVER_HIGH=> {
+            VIRTIO_MMIO_QUEUE_DRIVER_HIGH => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
-                    state.queues[q].avail_addr =
-                        (state.queues[q].avail_addr & 0x0000_0000_FFFF_FFFF) | ((value as u64) << 32);
+                    state.queues[q].avail_addr = (state.queues[q].avail_addr
+                        & 0x0000_0000_FFFF_FFFF)
+                        | ((value as u64) << 32);
                 }
             }
             VIRTIO_MMIO_QUEUE_DEVICE_LOW => {
@@ -369,21 +391,26 @@ impl VirtioMmio {
                         (state.queues[q].used_addr & 0xFFFF_FFFF_0000_0000) | value as u64;
                 }
             }
-            VIRTIO_MMIO_QUEUE_DEVICE_HIGH=> {
+            VIRTIO_MMIO_QUEUE_DEVICE_HIGH => {
                 let q = state.queue_sel as usize;
                 if q < state.queues.len() {
-                    state.queues[q].used_addr =
-                        (state.queues[q].used_addr & 0x0000_0000_FFFF_FFFF) | ((value as u64) << 32);
+                    state.queues[q].used_addr = (state.queues[q].used_addr & 0x0000_0000_FFFF_FFFF)
+                        | ((value as u64) << 32);
                 }
             }
 
             o if (VIRTIO_MMIO_CONFIG..VIRTIO_MMIO_CONFIG + 0x100).contains(&o) => {
                 drop(state);
-                self.device.write_config(o - VIRTIO_MMIO_CONFIG, value, size);
+                self.device
+                    .write_config(o - VIRTIO_MMIO_CONFIG, value, size);
             }
 
             _ => {
-                tracing::trace!("virtio mmio write unknown offset={:#x} val={:#x}", offset, value);
+                tracing::trace!(
+                    "virtio mmio write unknown offset={:#x} val={:#x}",
+                    offset,
+                    value
+                );
             }
         }
     }
@@ -413,7 +440,9 @@ impl VirtioMmioBus {
 
     /// 创建空的 MMIO 总线。
     pub fn new() -> Self {
-        Self { devices: Vec::new() }
+        Self {
+            devices: Vec::new(),
+        }
     }
 
     /// 添加设备，自动分配 MMIO 地址。
@@ -453,9 +482,9 @@ impl VirtioMmioBus {
 
     /// 检查 GPA 是否在 VirtIO MMIO 区域内。
     pub fn contains(&self, gpa: u64) -> bool {
-        !self.devices.is_empty() &&
-            gpa >= Self::BASE_ADDR &&
-            gpa < Self::BASE_ADDR + self.devices.len() as u64 * Self::DEVICE_SIZE
+        !self.devices.is_empty()
+            && gpa >= Self::BASE_ADDR
+            && gpa < Self::BASE_ADDR + self.devices.len() as u64 * Self::DEVICE_SIZE
     }
 
     /// 返回总线上的所有设备。

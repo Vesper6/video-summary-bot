@@ -13,12 +13,17 @@ pub struct TimelineSegmenter {
 }
 
 impl TimelineSegmenter {
+    /// 创建分段器（指定分段精度，单位秒）。
     pub fn new(precision: u32) -> Self {
         Self { precision }
     }
 
     /// 根据转写文本生成分段。
-    pub async fn segment(&self, _transcript: &str, _total_duration: f32) -> Result<Vec<TimelineSegment>> {
+    pub async fn segment(
+        &self,
+        _transcript: &str,
+        _total_duration: f32,
+    ) -> Result<Vec<TimelineSegment>> {
         tracing::warn!("timeline segmenter: not yet implemented");
         Ok(Vec::new())
     }

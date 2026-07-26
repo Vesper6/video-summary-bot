@@ -123,7 +123,8 @@ hypervisor = { version = "0.0.8", optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 # KVM ioctl 接口（可选 feature，未启用时不拉取）
 kvm-ioctls = { version = "0.13", optional = true }
-kvm-bindings = { version = "0.9", optional = true }
+# 版本需与 kvm-ioctls 0.13 内部使用的 kvm-bindings 一致，否则类型不兼容
+kvm-bindings = { version = "0.6", optional = true }
 libc = "0.2"
 
 # =============================================

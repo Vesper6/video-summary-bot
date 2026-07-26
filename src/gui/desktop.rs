@@ -8,9 +8,9 @@ use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoop};
 use tao::window::WindowBuilder;
 
+use super::DesktopOpts;
 use crate::api;
 use crate::error::{Error, Result};
-use super::DesktopOpts;
 
 /// 启动桌面应用：后台本地 API + 原生窗口内嵌界面。
 pub fn run(opts: DesktopOpts) -> Result<i32> {
@@ -34,6 +34,7 @@ pub fn run(opts: DesktopOpts) -> Result<i32> {
         .build(&window)
         .map_err(|e| Error::Cli(format!("create webview: {e}")))?;
 
+    // tao 的 run() 永不返回（进程随窗口关闭退出）
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
         if let Event::WindowEvent {
@@ -43,9 +44,7 @@ pub fn run(opts: DesktopOpts) -> Result<i32> {
         {
             *control_flow = ControlFlow::Exit;
         }
-    });
-
-    Ok(0)
+    })
 }
 
 fn wait_for_server(port: u16) -> Result<()> {

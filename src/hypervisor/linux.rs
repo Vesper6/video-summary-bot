@@ -9,9 +9,9 @@
 
 use async_trait::async_trait;
 #[cfg(all(target_os = "linux", feature = "kvm"))]
-use std::sync::Arc;
-#[cfg(all(target_os = "linux", feature = "kvm"))]
 use parking_lot::RwLock;
+#[cfg(all(target_os = "linux", feature = "kvm"))]
+use std::sync::Arc;
 
 use crate::error::{Error, Result};
 use crate::hypervisor::{Hypervisor, ProbeResult};
@@ -26,13 +26,8 @@ use crate::vmm::VmState;
 #[cfg(all(target_os = "linux", feature = "kvm"))]
 mod kvm_impl {
     use super::*;
-    use kvm_ioctls::{Kvm, VmFd, VcpuFd, VcpuExit};
-    use kvm_bindings::{
-        kvm_userspace_memory_region,
-        kvm_regs,
-        kvm_sregs,
-        KVM_MEM_LOG_DIRTY_PAGES,
-    };
+    use kvm_bindings::kvm_userspace_memory_region;
+    use kvm_ioctls::{Kvm, VcpuExit, VcpuFd, VmFd};
 
     /// 页对齐的宿主内存块（用于客户机 RAM）。
     pub(super) struct MemorySlot {
@@ -65,7 +60,9 @@ mod kvm_impl {
             if ptr == libc::MAP_FAILED {
                 return Err(Error::Vmm(format!(
                     "mmap failed for guest RAM at gpa={:#x}, size={:#x}: {}",
-                    gpa, size, std::io::Error::last_os_error()
+                    gpa,
+                    size,
+                    std::io::Error::last_os_error()
                 )));
             }
             Ok(Self {
@@ -95,6 +92,8 @@ mod kvm_impl {
     pub(super) struct KvmVm {
         pub vm_fd: VmFd,
         pub vcpus: Vec<VcpuFd>,
+        /// RAII 持有 guest RAM 映射（drop 时 munmap）
+        #[allow(dead_code)]
         pub memory_slots: Vec<MemorySlot>,
         pub vcpu_count: u32,
     }
@@ -114,7 +113,7 @@ mod kvm_impl {
 
             // 注册内存区域到 KVM
             let mem_region = kvm_userspace_memory_region {
-                slot: 0,
+                slot: slot.slot,
                 guest_phys_addr: slot.gpa,
                 memory_size: slot.size as u64,
                 userspace_addr: slot.hva as u64,
@@ -135,7 +134,9 @@ mod kvm_impl {
 
             tracing::info!(
                 "KVM VM created: {} (cpus={}, memory={}MB)",
-                config.name, config.cpus, config.memory_mb
+                config.name,
+                config.cpus,
+                config.memory_mb
             );
             Ok(Self {
                 vm_fd,
@@ -162,10 +163,13 @@ mod kvm_impl {
 
         /// vCPU 0 运行循环（同步，在 spawn_blocking 线程中调用）。
         pub fn run_vcpu0(&self) -> Result<i32> {
-            let vcpu = self.vcpus.get(0).ok_or_else(|| Error::Vmm("no vCPUs".into()))?;
+            let vcpu = self
+                .vcpus
+                .first()
+                .ok_or_else(|| Error::Vmm("no vCPUs".into()))?;
             loop {
                 match vcpu.run() {
-                    Ok(exit) => match handle_kvm_exit(&exit) {
+                    Ok(exit) => match handle_kvm_exit(exit) {
                         KvmAction::Continue => {}
                         KvmAction::Halt => {
                             tracing::info!("vCPU 0 halted");
@@ -197,7 +201,7 @@ mod kvm_impl {
     }
 
     /// 处理 KVM exit reason。
-    fn handle_kvm_exit(exit: &VcpuExit) -> KvmAction {
+    fn handle_kvm_exit(exit: VcpuExit<'_>) -> KvmAction {
         match exit {
             VcpuExit::IoIn(port, data) => {
                 tracing::trace!("I/O IN port={:#x} size={}", port, data.len());
@@ -214,7 +218,7 @@ mod kvm_impl {
                     &data[..data.len().min(4)]
                 );
                 // 串口输出（0x3F8 = COM1）
-                if *port == 0x3F8 {
+                if port == 0x3F8 {
                     print!("{}", char::from(data[0]));
                 }
                 KvmAction::Continue
@@ -260,7 +264,7 @@ mod kvm_impl {
             .map_err(|e| Error::Vmm(format!("KVM_GET_REGS failed: {e}")))?;
         regs.rip = entry_rip;
         regs.rflags = 0x0000_0002; // 保留位
-        regs.rsp = 0x0000_8000;   // 初始栈指针
+        regs.rsp = 0x0000_8000; // 初始栈指针
         vcpu.set_regs(&regs)
             .map_err(|e| Error::Vmm(format!("KVM_SET_REGS failed: {e}")))?;
 
@@ -277,7 +281,11 @@ mod kvm_impl {
         vcpu.set_sregs(&sregs)
             .map_err(|e| Error::Vmm(format!("KVM_SET_SREGS failed: {e}")))?;
 
-        tracing::debug!("vCPU registers set: RIP={:#x} RSP={:#x}", entry_rip, 0x8000_u64);
+        tracing::debug!(
+            "vCPU registers set: RIP={:#x} RSP={:#x}",
+            entry_rip,
+            0x8000_u64
+        );
         Ok(())
     }
 }
@@ -330,7 +338,8 @@ impl KvmBackend {
         {
             Err(Error::Vmm(
                 "KVM backend requires Linux + 'kvm' feature. \
-                 Build with: cargo build --features kvm".into(),
+                 Build with: cargo build --features kvm"
+                    .into(),
             ))
         }
     }
@@ -363,7 +372,7 @@ impl Hypervisor for KvmBackend {
                     tracing::debug!("KVM API version: {}", ver);
                     ProbeResult::ok("KVM")
                 }
-                Err(e) => ProbeResult::err("KVM", "failed to open /dev/kvm"),
+                Err(_) => ProbeResult::err("KVM", "failed to open /dev/kvm"),
             }
         }
 
@@ -373,7 +382,10 @@ impl Hypervisor for KvmBackend {
             {
                 // 即使不启用 kvm feature，也可以看 /dev/kvm 是否存在
                 if std::path::Path::new("/dev/kvm").exists() {
-                    ProbeResult::err("KVM", "feature 'kvm' not enabled - build with --features kvm")
+                    ProbeResult::err(
+                        "KVM",
+                        "feature 'kvm' not enabled - build with --features kvm",
+                    )
                 } else {
                     ProbeResult::err("KVM", "/dev/kvm not found")
                 }
@@ -389,7 +401,7 @@ impl Hypervisor for KvmBackend {
         "KVM"
     }
 
-    async fn create_vm(&self, _config: &VmConfig) -> Result<()> {
+    async fn create_vm(&self, config: &VmConfig) -> Result<()> {
         #[cfg(all(target_os = "linux", feature = "kvm"))]
         {
             let mut state = self.state.write();
@@ -404,7 +416,10 @@ impl Hypervisor for KvmBackend {
         }
 
         #[cfg(not(all(target_os = "linux", feature = "kvm")))]
-        Err(Error::Vmm("KVM not available".into()))
+        {
+            let _ = config;
+            Err(Error::Vmm("KVM not available".into()))
+        }
     }
 
     async fn start(&self) -> Result<()> {
@@ -445,7 +460,10 @@ impl Hypervisor for KvmBackend {
             let result = tokio::task::spawn_blocking(move || -> Result<i32> {
                 let mut state = state_arc.write();
 
-                let vm = state.vm.as_mut().ok_or_else(|| Error::Vmm("VM not created".into()))?;
+                let vm = state
+                    .vm
+                    .as_mut()
+                    .ok_or_else(|| Error::Vmm("VM not created".into()))?;
 
                 // 默认从 0x8000 开始执行（内核入口简化地址）
                 let entry_rip: u64 = 0x8000;
@@ -485,9 +503,15 @@ impl Hypervisor for KvmBackend {
     #[allow(clippy::too_many_arguments)]
     fn set_vcpu_entry(
         &self,
-        _rip: u64, _rsp: u64, _rsi: u64,
-        _cr0: u64, _cr3: u64, _cr4: u64, _efer: u64,
-        _gdt_base: u64, _gdt_limit: u16,
+        _rip: u64,
+        _rsp: u64,
+        _rsi: u64,
+        _cr0: u64,
+        _cr3: u64,
+        _cr4: u64,
+        _efer: u64,
+        _gdt_base: u64,
+        _gdt_limit: u16,
     ) -> Result<()> {
         // KVM: 通过 VcpuFd::set_sregs / set_regs 设置，待实现
         Err(Error::Vmm("KVM set_vcpu_entry not yet implemented".into()))

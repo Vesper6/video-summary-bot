@@ -101,8 +101,7 @@ impl SubtitleFetcher {
 
     /// 从 URL 获取视频文字信息（字幕 + 元数据）。
     pub async fn fetch(&self, url: &str) -> Result<VideoText> {
-        let tmp = TempDir::new()
-            .map_err(|e| Error::Crawler(format!("tempdir failed: {e}")))?;
+        let tmp = TempDir::new().map_err(|e| Error::Crawler(format!("tempdir failed: {e}")))?;
 
         // 1. 先获取元信息（标题、描述、时长）
         let meta = self.fetch_metadata(url).await?;
@@ -152,24 +151,23 @@ impl SubtitleFetcher {
     }
 
     /// 下载字幕并解析为纯文本。
-    async fn fetch_subtitle(
-        &self,
-        url: &str,
-        out_dir: &Path,
-    ) -> Result<Option<String>> {
+    async fn fetch_subtitle(&self, url: &str, out_dir: &Path) -> Result<Option<String>> {
         let out_tmpl = out_dir.join("sub.%(ext)s").to_string_lossy().to_string();
 
         let mut cmd = self.base_cmd();
         cmd.args([
-            "--write-subs",       // 内嵌字幕
-            "--write-auto-sub",   // 自动字幕（AI 生成）
-            "--sub-lang", "zh-Hans,zh,zh-CN,en",
-            "--sub-format", "vtt/best",
-            "--skip-download",    // 不下载视频
+            "--write-subs",     // 内嵌字幕
+            "--write-auto-sub", // 自动字幕（AI 生成）
+            "--sub-lang",
+            "zh-Hans,zh,zh-CN,en",
+            "--sub-format",
+            "vtt/best",
+            "--skip-download", // 不下载视频
             "--no-playlist",
             "--quiet",
             "--no-warnings",
-            "-o", &out_tmpl,
+            "-o",
+            &out_tmpl,
             url,
         ]);
 
@@ -191,7 +189,8 @@ impl SubtitleFetcher {
             cmd.arg("--cookies").arg(cookies);
         }
         if let Some(ffmpeg) = &self.ffmpeg_path {
-            cmd.arg("--ffmpeg-location").arg(ffmpeg.parent().unwrap_or(ffmpeg));
+            cmd.arg("--ffmpeg-location")
+                .arg(ffmpeg.parent().unwrap_or(ffmpeg));
         }
         cmd
     }
@@ -244,7 +243,11 @@ fn which(name: &str) -> Option<PathBuf> {
     std::env::var_os("PATH").and_then(|paths| {
         std::env::split_paths(&paths).find_map(|dir| {
             let p = dir.join(name);
-            if p.exists() { Some(p) } else { None }
+            if p.exists() {
+                Some(p)
+            } else {
+                None
+            }
         })
     })
 }
@@ -258,24 +261,20 @@ fn find_cookies_file() -> Option<PathBuf> {
     ];
     candidates
         .into_iter()
-        .map(|s| {
-            match s.strip_prefix("~/") {
-                Some(rest) => std::env::var("HOME")
-                    .or_else(|_| std::env::var("USERPROFILE"))
-                    .map(|home| PathBuf::from(home).join(rest))
-                    .unwrap_or_else(|_| PathBuf::from(s)),
-                None => PathBuf::from(s),
-            }
+        .map(|s| match s.strip_prefix("~/") {
+            Some(rest) => std::env::var("HOME")
+                .or_else(|_| std::env::var("USERPROFILE"))
+                .map(|home| PathBuf::from(home).join(rest))
+                .unwrap_or_else(|_| PathBuf::from(s)),
+            None => PathBuf::from(s),
         })
         .find(|p| p.exists())
 }
 
 /// 带超时的异步进程执行。
-async fn run_with_timeout(
-    mut cmd: tokio::process::Command,
-    timeout_secs: u64,
-) -> Result<String> {
-    let child = cmd.spawn()
+async fn run_with_timeout(mut cmd: tokio::process::Command, timeout_secs: u64) -> Result<String> {
+    let child = cmd
+        .spawn()
         .map_err(|e| Error::Crawler(format!("spawn yt-dlp failed: {e}")))?;
 
     let output = tokio::time::timeout(
@@ -306,8 +305,8 @@ async fn run_with_timeout(
 
 /// 在目录中查找字幕文件并解析。
 fn find_and_parse_subtitle(dir: &Path) -> Result<Option<String>> {
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| Error::Crawler(format!("read dir failed: {e}")))?;
+    let entries =
+        std::fs::read_dir(dir).map_err(|e| Error::Crawler(format!("read dir failed: {e}")))?;
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -442,7 +441,11 @@ fn detect_platform(url: &str) -> String {
 
 /// 查找 ffmpeg 可执行文件。
 fn find_ffmpeg() -> Option<PathBuf> {
-    let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let exe = if cfg!(windows) {
+        "ffmpeg.exe"
+    } else {
+        "ffmpeg"
+    };
 
     // PATH 查找
     if let Some(p) = which(exe) {

@@ -68,26 +68,26 @@ mod whvp_impl {
             flags: WHV_MAP_GPA_RANGE_FLAGS,
         ) -> Result<()> {
             unsafe {
-                WHvMapGpaRange(self.handle, host_ptr, guest_address, size, flags)
-                    .map_err(|e| Error::Vmm(format!(
-                        "WHvMapGpaRange (gpa={:#x}): {e}", guest_address
-                    )))?;
+                WHvMapGpaRange(self.handle, host_ptr, guest_address, size, flags).map_err(|e| {
+                    Error::Vmm(format!("WHvMapGpaRange (gpa={:#x}): {e}", guest_address))
+                })?;
                 Ok(())
             }
         }
 
         pub fn create_vcpu(&self, vp_index: u32) -> Result<()> {
             unsafe {
-                WHvCreateVirtualProcessor(self.handle, vp_index, 0)
-                    .map_err(|e| Error::Vmm(format!(
-                        "WHvCreateVirtualProcessor({}): {e}", vp_index
-                    )))?;
+                WHvCreateVirtualProcessor(self.handle, vp_index, 0).map_err(|e| {
+                    Error::Vmm(format!("WHvCreateVirtualProcessor({}): {e}", vp_index))
+                })?;
                 Ok(())
             }
         }
 
         pub fn delete_vcpu(&self, vp_index: u32) {
-            unsafe { let _ = WHvDeleteVirtualProcessor(self.handle, vp_index); }
+            unsafe {
+                let _ = WHvDeleteVirtualProcessor(self.handle, vp_index);
+            }
         }
 
         /// 设置 vCPU 完整 long-mode 初始状态：
@@ -196,8 +196,11 @@ mod whvp_impl {
                 let names = [name];
                 let values = [WHV_REGISTER_VALUE { Reg64: value }];
                 WHvSetVirtualProcessorRegisters(
-                    self.handle, vp_index,
-                    names.as_ptr(), 1, values.as_ptr(),
+                    self.handle,
+                    vp_index,
+                    names.as_ptr(),
+                    1,
+                    values.as_ptr(),
                 )
                 .map_err(|e| Error::Vmm(format!("set_reg: {e}")))?;
                 Ok(())
@@ -210,9 +213,12 @@ mod whvp_impl {
                 let mut result: WHV_TRANSLATE_GVA_RESULT = std::mem::zeroed();
                 let mut gpa: u64 = 0;
                 let hr = WHvTranslateGva(
-                    self.handle, vp_index, gva,
+                    self.handle,
+                    vp_index,
+                    gva,
                     WHvTranslateGvaFlagValidateRead,
-                    &mut result, &mut gpa,
+                    &mut result,
+                    &mut gpa,
                 );
                 // ResultCode 0 = Success
                 if hr.is_ok() && result.ResultCode.0 == 0 {
@@ -225,10 +231,7 @@ mod whvp_impl {
         }
 
         /// 完成 I/O 指令：推进 RIP 越过指令，可选写回 RAX。
-        pub fn complete_io(
-            &self, vp_index: u32,
-            next_rip: u64, rax: Option<u64>,
-        ) -> Result<()> {
+        pub fn complete_io(&self, vp_index: u32, next_rip: u64, rax: Option<u64>) -> Result<()> {
             unsafe {
                 if let Some(rax_val) = rax {
                     let names = [WHvX64RegisterRip, WHvX64RegisterRax];
@@ -237,16 +240,24 @@ mod whvp_impl {
                         WHV_REGISTER_VALUE { Reg64: rax_val },
                     ];
                     WHvSetVirtualProcessorRegisters(
-                        self.handle, vp_index,
-                        names.as_ptr(), 2, values.as_ptr(),
-                    ).map_err(|e| Error::Vmm(format!("complete_io: {e}")))?;
+                        self.handle,
+                        vp_index,
+                        names.as_ptr(),
+                        2,
+                        values.as_ptr(),
+                    )
+                    .map_err(|e| Error::Vmm(format!("complete_io: {e}")))?;
                 } else {
                     let names = [WHvX64RegisterRip];
                     let values = [WHV_REGISTER_VALUE { Reg64: next_rip }];
                     WHvSetVirtualProcessorRegisters(
-                        self.handle, vp_index,
-                        names.as_ptr(), 1, values.as_ptr(),
-                    ).map_err(|e| Error::Vmm(format!("complete_io: {e}")))?;
+                        self.handle,
+                        vp_index,
+                        names.as_ptr(),
+                        1,
+                        values.as_ptr(),
+                    )
+                    .map_err(|e| Error::Vmm(format!("complete_io: {e}")))?;
                 }
                 Ok(())
             }
@@ -322,7 +333,8 @@ impl WhvpBackend {
         {
             Err(Error::Vmm(
                 "WHVP backend requires Windows + 'whvp' feature. \
-                 Build with: cargo build --features whvp".into(),
+                 Build with: cargo build --features whvp"
+                    .into(),
             ))
         }
     }
@@ -335,7 +347,9 @@ impl WhvpBackend {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             let mut state = self.state.write();
-            let partition = state.partition.as_ref()
+            let partition = state
+                .partition
+                .as_ref()
                 .ok_or_else(|| Error::Vmm("VM not created".into()))?;
             partition.map_gpa_range(
                 hva as *mut core::ffi::c_void,
@@ -384,7 +398,10 @@ impl Hypervisor for WhvpBackend {
         {
             #[cfg(target_os = "windows")]
             {
-                ProbeResult::err("WHVP", "feature 'whvp' not enabled - build with --features whvp")
+                ProbeResult::err(
+                    "WHVP",
+                    "feature 'whvp' not enabled - build with --features whvp",
+                )
             }
             #[cfg(not(target_os = "windows"))]
             {
@@ -400,7 +417,9 @@ impl Hypervisor for WhvpBackend {
     fn request_stop(&self) {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
-            self.state.read().stop_flag
+            self.state
+                .read()
+                .stop_flag
                 .store(true, std::sync::atomic::Ordering::SeqCst);
         }
     }
@@ -430,7 +449,15 @@ impl Hypervisor for WhvpBackend {
         {
             let mut state = self.state.write();
             state.vcpu_entry = Some(VcpuEntry {
-                rip, rsp, rsi, cr0, cr3, cr4, efer, gdt_base, gdt_limit,
+                rip,
+                rsp,
+                rsi,
+                cr0,
+                cr3,
+                cr4,
+                efer,
+                gdt_base,
+                gdt_limit,
             });
             Ok(())
         }
@@ -447,7 +474,9 @@ impl Hypervisor for WhvpBackend {
             }
             tracing::info!(
                 "Creating WHVP VM: {} (cpus={}, memory={}MB)",
-                config.name, config.cpus, config.memory_mb
+                config.name,
+                config.cpus,
+                config.memory_mb
             );
             let partition = whvp_impl::WhvpPartition::create(config.cpus as u32)?;
             state.partition = Some(partition);
@@ -492,7 +521,9 @@ impl Hypervisor for WhvpBackend {
             let state_arc = Arc::clone(&self.state);
             let result = tokio::task::spawn_blocking(move || -> Result<i32> {
                 let state = state_arc.read();
-                let partition = state.partition.as_ref()
+                let partition = state
+                    .partition
+                    .as_ref()
                     .ok_or_else(|| Error::Vmm("VM not created".into()))?;
                 let vcpu_count = partition.vcpu_count();
                 tracing::info!("WHVP run loop starting, {} vCPUs", vcpu_count);
@@ -502,10 +533,9 @@ impl Hypervisor for WhvpBackend {
                 let stop_flag = Arc::clone(&state.stop_flag);
                 stop_flag.store(false, std::sync::atomic::Ordering::SeqCst);
 
-                let entry = state.vcpu_entry
-                    .ok_or_else(|| Error::Vmm(
-                        "vcpu_entry not set - call set_vcpu_entry() before run()".into()
-                    ))?;
+                let entry = state.vcpu_entry.ok_or_else(|| {
+                    Error::Vmm("vcpu_entry not set - call set_vcpu_entry() before run()".into())
+                })?;
 
                 // 从 guest RIP 读取指令字节，解码 I/O 指令长度。
                 // RIP 可能是虚拟地址（内核跳到高半区后），需先翻译成物理地址。
@@ -516,7 +546,9 @@ impl Hypervisor for WhvpBackend {
                         return 1;
                     }
                     let read = |off: u64| -> u8 {
-                        if off >= ram_size { return 0; }
+                        if off >= ram_size {
+                            return 0;
+                        }
                         unsafe { *((ram_ptr + off as usize) as *const u8) }
                     };
                     let mut i = 0u64;
@@ -525,8 +557,11 @@ impl Hypervisor for WhvpBackend {
                         let b = read(phys + i);
                         if matches!(b, 0x66 | 0x67 | 0xF0 | 0xF2 | 0xF3 | 0x40..=0x4F) {
                             // 前缀（含 REX 0x40-0x4F）
-                            i += 1; len += 1;
-                            if i > 4 { break; }
+                            i += 1;
+                            len += 1;
+                            if i > 4 {
+                                break;
+                            }
                         } else {
                             break;
                         }
@@ -534,7 +569,7 @@ impl Hypervisor for WhvpBackend {
                     let op = read(phys + i);
                     len += match op {
                         0xE4 | 0xE5 | 0xE6 | 0xE7 => 2, // in/out imm8
-                        _ => 1,                          // in/out dx (0xEC-0xEF) 及兜底
+                        _ => 1,                         // in/out dx (0xEC-0xEF) 及兜底
                     };
                     len
                 };
@@ -543,26 +578,51 @@ impl Hypervisor for WhvpBackend {
                 partition.create_vcpu(0)?;
                 partition.set_long_mode_entry(
                     0,
-                    entry.rip, entry.rsp, entry.rsi,
-                    entry.cr0, entry.cr3, entry.cr4, entry.efer,
-                    entry.gdt_base, entry.gdt_limit,
+                    entry.rip,
+                    entry.rsp,
+                    entry.rsi,
+                    entry.cr0,
+                    entry.cr3,
+                    entry.cr4,
+                    entry.efer,
+                    entry.gdt_base,
+                    entry.gdt_limit,
                 )?;
                 tracing::info!(
                     "vCPU 0 long-mode entry: rip={:#x} rsp={:#x} rsi={:#x} cr3={:#x}",
-                    entry.rip, entry.rsp, entry.rsi, entry.cr3
+                    entry.rip,
+                    entry.rsp,
+                    entry.rsi,
+                    entry.cr3
                 );
 
                 let mut exit_code: i32 = 0;
                 let mut step_count = 0u64;
                 // 16550 UART（COM1 @ 0x3F8）有状态寄存器
                 struct Uart {
-                    ier: u8, fcr: u8, lcr: u8, mcr: u8, scr: u8, dll: u8, dlm: u8,
+                    ier: u8,
+                    fcr: u8,
+                    lcr: u8,
+                    mcr: u8,
+                    scr: u8,
+                    dll: u8,
+                    dlm: u8,
                 }
-                let mut uart = Uart { ier: 0, fcr: 0, lcr: 0, mcr: 0, scr: 0, dll: 0, dlm: 0 };
+                let mut uart = Uart {
+                    ier: 0,
+                    fcr: 0,
+                    lcr: 0,
+                    mcr: 0,
+                    scr: 0,
+                    dll: 0,
+                    dlm: 0,
+                };
                 let mut uart_line: Vec<u8> = Vec::with_capacity(256);
                 // 退出原因直方图（调试用）
-                let mut reason_hist: std::collections::HashMap<i32, u64> = std::collections::HashMap::new();
-                let mut io_ports_seen: std::collections::HashMap<u16, u64> = std::collections::HashMap::new();
+                let mut reason_hist: std::collections::HashMap<i32, u64> =
+                    std::collections::HashMap::new();
+                let mut io_ports_seen: std::collections::HashMap<u16, u64> =
+                    std::collections::HashMap::new();
                 loop {
                     // GUI/API 请求停止：优雅退出
                     if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
@@ -582,7 +642,10 @@ impl Hypervisor for WhvpBackend {
                     //  8=Halt 6=UnsupportedFeature 4097=Cpuid 4096=MsrAccess
                     match exit_ctx.ExitReason.0 {
                         // X64Halt
-                        8 => { tracing::info!("vCPU 0 halted @ rip={:#x}", rip); break; }
+                        8 => {
+                            tracing::info!("vCPU 0 halted @ rip={:#x}", rip);
+                            break;
+                        }
                         // MemoryAccess (MMIO 或缺页)
                         1 => {
                             let mem = unsafe { &exit_ctx.Anonymous.MemoryAccess };
@@ -590,7 +653,9 @@ impl Hypervisor for WhvpBackend {
                             if step_count < 20 || step_count % 20000 == 0 {
                                 tracing::info!(
                                     "vCPU MemoryAccess: rip={:#x} gpa={:#x} ({} steps)",
-                                    rip, gpa, step_count
+                                    rip,
+                                    gpa,
+                                    step_count
                                 );
                             }
                         }
@@ -626,28 +691,28 @@ impl Hypervisor for WhvpBackend {
                                                 uart_line.push(byte);
                                             }
                                         }
-                                        0 => uart.dll = byte,          // DLL (DLAB=1)
-                                        1 if dlab => uart.dlm = byte,  // DLM (DLAB=1)
-                                        1 => uart.ier = byte,          // IER
-                                        2 => uart.fcr = byte,          // FCR
-                                        3 => uart.lcr = byte,          // LCR
-                                        4 => uart.mcr = byte,          // MCR
-                                        7 => uart.scr = byte,          // SCR
+                                        0 => uart.dll = byte, // DLL (DLAB=1)
+                                        1 if dlab => uart.dlm = byte, // DLM (DLAB=1)
+                                        1 => uart.ier = byte, // IER
+                                        2 => uart.fcr = byte, // FCR
+                                        3 => uart.lcr = byte, // LCR
+                                        4 => uart.mcr = byte, // MCR
+                                        7 => uart.scr = byte, // SCR
                                         _ => {}
                                     }
                                     partition.complete_io(0, next_rip, None)?;
                                 } else {
                                     let val: u8 = match reg {
-                                        0 if !dlab => 0,               // RBR：无输入
-                                        0 => uart.dll,                 // DLL
-                                        1 if dlab => uart.dlm,         // DLM
-                                        1 => uart.ier,                 // IER
-                                        2 => 0x01,                     // IIR：无中断挂起
-                                        3 => uart.lcr,                 // LCR（关键：回读）
-                                        4 => uart.mcr,                 // MCR
-                                        5 => 0x60,                     // LSR：THR+TX empty
-                                        6 => 0xB0,                     // MSR：DCD+DSR+CTS
-                                        7 => uart.scr,                 // SCR
+                                        0 if !dlab => 0,       // RBR：无输入
+                                        0 => uart.dll,         // DLL
+                                        1 if dlab => uart.dlm, // DLM
+                                        1 => uart.ier,         // IER
+                                        2 => 0x01,             // IIR：无中断挂起
+                                        3 => uart.lcr,         // LCR（关键：回读）
+                                        4 => uart.mcr,         // MCR
+                                        5 => 0x60,             // LSR：THR+TX empty
+                                        6 => 0xB0,             // MSR：DCD+DSR+CTS
+                                        7 => uart.scr,         // SCR
                                         _ => 0,
                                     };
                                     let rax = (io.Rax & !0xFF) | val as u64;
@@ -667,7 +732,8 @@ impl Hypervisor for WhvpBackend {
                         4 => {
                             tracing::error!(
                                 "vCPU 0 UNRECOVERABLE EXCEPTION @ rip={:#x} (step {}) - 三重故障",
-                                rip, step_count
+                                rip,
+                                step_count
                             );
                             exit_code = -4;
                             break;
@@ -693,7 +759,9 @@ impl Hypervisor for WhvpBackend {
                         other => {
                             tracing::warn!(
                                 "vCPU 0 exit reason {} @ rip={:#x} (step {})",
-                                other, rip, step_count
+                                other,
+                                rip,
+                                step_count
                             );
                             if step_count > 50 {
                                 exit_code = other;

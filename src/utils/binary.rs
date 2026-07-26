@@ -43,4 +43,3 @@ pub fn probe_named(cmd: &str) -> ProbeResult {
 
     ProbeResult::err("not found", "not found in PATH or common locations")
 }
-

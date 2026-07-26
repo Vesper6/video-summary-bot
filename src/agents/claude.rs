@@ -11,11 +11,11 @@ use crate::hypervisor::ProbeResult;
 
 /// Claude Code 探测结果。
 pub fn probe() -> ProbeResult {
-    let has_token = std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok()
-        || std::env::var("ANTHROPIC_API_KEY").is_ok();
+    let has_token =
+        std::env::var("ANTHROPIC_AUTH_TOKEN").is_ok() || std::env::var("ANTHROPIC_API_KEY").is_ok();
     if has_token {
-        let model = std::env::var("ANTHROPIC_MODEL")
-            .unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
+        let model =
+            std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
         // SAFETY: 字符串泄漏仅用于 &'static str，进程生命周期内有效
         let msg: &'static str =
             Box::leak(format!("Claude API ready (model: {model})").into_boxed_str());
@@ -43,27 +43,20 @@ impl ClaudeClient {
         // CC Switch 用 ANTHROPIC_AUTH_TOKEN，标准 SDK 用 ANTHROPIC_API_KEY
         let api_key = std::env::var("ANTHROPIC_AUTH_TOKEN")
             .or_else(|_| std::env::var("ANTHROPIC_API_KEY"))
-            .map_err(|_| {
-                Error::Agent(
-                    "ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY not set".into(),
-                )
-            })?;
+            .map_err(|_| Error::Agent("ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY not set".into()))?;
 
         let base_url = std::env::var("ANTHROPIC_BASE_URL")
             .unwrap_or_else(|_| "https://api.anthropic.com".to_string());
 
-        let model = std::env::var("ANTHROPIC_MODEL")
-            .unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
+        let model =
+            std::env::var("ANTHROPIC_MODEL").unwrap_or_else(|_| "claude-sonnet-4-6".to_string());
 
         let http = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| Error::Agent(format!("failed to build HTTP client: {e}")))?;
 
-        tracing::debug!(
-            "Claude client: base_url={} model={}",
-            base_url, model
-        );
+        tracing::debug!("Claude client: base_url={} model={}", base_url, model);
 
         Ok(Self {
             http,
@@ -91,11 +84,7 @@ impl ClaudeClient {
     }
 
     /// 发送带 system prompt 的消息。
-    pub async fn send_with_system(
-        &self,
-        system: &str,
-        prompt: &str,
-    ) -> Result<String> {
+    pub async fn send_with_system(&self, system: &str, prompt: &str) -> Result<String> {
         let body = serde_json::json!({
             "model": self.model,
             "max_tokens": self.max_tokens,
@@ -144,9 +133,7 @@ impl ClaudeClient {
             .map_err(|e| Error::Agent(format!("failed to read response: {e}")))?;
 
         if !status.is_success() {
-            return Err(Error::Agent(format!(
-                "API error {status}: {text}"
-            )));
+            return Err(Error::Agent(format!("API error {status}: {text}")));
         }
 
         // 解析 Anthropic Messages API 响应
@@ -161,9 +148,7 @@ impl ClaudeClient {
                     .find(|block| block["type"].as_str() == Some("text"))
                     .and_then(|block| block["text"].as_str())
             })
-            .ok_or_else(|| {
-                Error::Agent(format!("no text block in response: {text}"))
-            })?;
+            .ok_or_else(|| Error::Agent(format!("no text block in response: {text}")))?;
 
         Ok(content.to_string())
     }
@@ -180,10 +165,16 @@ pub struct Message {
 impl Message {
     /// 构造 user 角色消息。
     pub fn user(content: impl Into<String>) -> Self {
-        Self { role: "user", content: content.into() }
+        Self {
+            role: "user",
+            content: content.into(),
+        }
     }
     /// 构造 assistant 角色消息。
     pub fn assistant(content: impl Into<String>) -> Self {
-        Self { role: "assistant", content: content.into() }
+        Self {
+            role: "assistant",
+            content: content.into(),
+        }
     }
 }

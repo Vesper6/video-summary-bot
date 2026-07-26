@@ -13,8 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::{Error, Result};
 
 /// 应用配置。
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// VM 默认配置
     #[serde(default)]
@@ -101,23 +100,17 @@ impl Default for OutputConfig {
     }
 }
 
-
 impl AppConfig {
     /// 加载配置。
     pub fn load() -> Result<Self> {
         let settings = config::Config::builder()
-            .add_source(config::Config::try_from(&AppConfig::default()).map_err(|e| {
-                Error::Config(format!("default config: {e}"))
-            })?)
+            .add_source(
+                config::Config::try_from(&AppConfig::default())
+                    .map_err(|e| Error::Config(format!("default config: {e}")))?,
+            )
             // 加载配置文件（如存在）
-            .add_source(
-                config::File::with_name("config.toml")
-                    .required(false),
-            )
-            .add_source(
-                config::File::with_name("config.yaml")
-                    .required(false),
-            )
+            .add_source(config::File::with_name("config.toml").required(false))
+            .add_source(config::File::with_name("config.yaml").required(false))
             // 环境变量覆盖（前缀 VSB_）
             .add_source(
                 config::Environment::with_prefix("VSB")

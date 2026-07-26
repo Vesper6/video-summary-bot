@@ -4,12 +4,16 @@ use std::net::Ipv4Addr;
 
 /// DHCP 服务器（占位实现）。
 pub struct DhcpServer {
+    /// DHCP 服务器自身 IP
     pub server_ip: Ipv4Addr,
+    /// 租约地址池起始 IP
     pub lease_start: Ipv4Addr,
+    /// 租约地址池结束 IP
     pub lease_end: Ipv4Addr,
 }
 
 impl DhcpServer {
+    /// 创建 DHCP 服务器（默认地址池 10.0.0.100-200）。
     pub fn new(network: std::net::Ipv4Addr) -> Self {
         Self {
             server_ip: network,

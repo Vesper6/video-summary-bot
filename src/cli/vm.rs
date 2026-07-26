@@ -163,7 +163,10 @@ pub struct BootCmd {
     pub rootfs: Option<std::path::PathBuf>,
 
     /// 内核命令行
-    #[arg(long, default_value = "earlyprintk=ttyS0,115200 console=ttyS0,115200 root=/dev/vda rw init=/etc/init.d/rcS")]
+    #[arg(
+        long,
+        default_value = "earlyprintk=ttyS0,115200 console=ttyS0,115200 root=/dev/vda rw init=/etc/init.d/rcS"
+    )]
     pub cmdline: String,
 
     /// 退出时停止 VM
@@ -206,7 +209,10 @@ async fn ls(cmd: LsCmd) -> Result<i32> {
         println!("（暂无虚拟机，使用 `vsb vm create --name <name>` 创建）");
         return Ok(0);
     }
-    println!("{:<20} {:<10} {:>5} {:>10} {:>8}", "NAME", "STATE", "vCPU", "MEM(MB)", "DISK(GB)");
+    println!(
+        "{:<20} {:<10} {:>5} {:>10} {:>8}",
+        "NAME", "STATE", "vCPU", "MEM(MB)", "DISK(GB)"
+    );
     for vm in vms {
         println!(
             "{:<20} {:<10} {:>5} {:>10} {:>8}",
@@ -232,7 +238,10 @@ async fn create(cmd: CreateCmd) -> Result<i32> {
         initramfs: cmd.initramfs,
         rootfs: cmd.rootfs,
     })?;
-    println!("✅ 已创建 VM '{}'（{} vCPU, {} MB, {} GB）", vm.name, vm.cpus, vm.memory_mb, vm.disk_gb);
+    println!(
+        "✅ 已创建 VM '{}'（{} vCPU, {} MB, {} GB）",
+        vm.name, vm.cpus, vm.memory_mb, vm.disk_gb
+    );
     Ok(0)
 }
 
@@ -251,7 +260,10 @@ async fn edit(cmd: EditCmd) -> Result<i32> {
             cmdline: cmd.cmdline,
         },
     )?;
-    println!("✅ 已更新 VM '{}'（{} vCPU, {} MB, {} GB）", vm.name, vm.cpus, vm.memory_mb, vm.disk_gb);
+    println!(
+        "✅ 已更新 VM '{}'（{} vCPU, {} MB, {} GB）",
+        vm.name, vm.cpus, vm.memory_mb, vm.disk_gb
+    );
     Ok(0)
 }
 
@@ -370,15 +382,15 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!();
 
     // 1. 解析路径（默认找 assets/ 下的镜像）
-    let kernel = cmd.kernel.unwrap_or_else(|| {
-        std::path::PathBuf::from("./assets/kernels/vmlinuz")
-    });
-    let initrd = cmd.initrd.unwrap_or_else(|| {
-        std::path::PathBuf::from("./assets/initramfs/initrd.img")
-    });
-    let rootfs = cmd.rootfs.unwrap_or_else(|| {
-        std::path::PathBuf::from("./assets/rootfs/rootfs.img")
-    });
+    let kernel = cmd
+        .kernel
+        .unwrap_or_else(|| std::path::PathBuf::from("./assets/kernels/vmlinuz"));
+    let initrd = cmd
+        .initrd
+        .unwrap_or_else(|| std::path::PathBuf::from("./assets/initramfs/initrd.img"));
+    let rootfs = cmd
+        .rootfs
+        .unwrap_or_else(|| std::path::PathBuf::from("./assets/rootfs/rootfs.img"));
 
     // 2. 验证文件存在
     for (name, path) in [
@@ -438,7 +450,10 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
         eprintln!("   Linux:   cargo build --features kvm");
         eprintln!();
         eprintln!("✅ 内核已成功加载到 Guest RAM（GPA 0x100000）");
-        eprintln!("   一旦 hypervisor 可用，运行循环就可以跳到 {:#x}", regs.rip);
+        eprintln!(
+            "   一旦 hypervisor 可用，运行循环就可以跳到 {:#x}",
+            regs.rip
+        );
         return Ok(0);
     }
 
@@ -451,8 +466,12 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!("🔗 映射 Guest RAM → hypervisor partition...");
     let ram_ptr = vmm.ram.raw_ptr();
     let ram_size = vmm.ram.size() as u64;
-    println!("   HVA={:p}, GPA=0x0..{:#x} ({} MB)",
-        ram_ptr, ram_size, ram_size / 1024 / 1024);
+    println!(
+        "   HVA={:p}, GPA=0x0..{:#x} ({} MB)",
+        ram_ptr,
+        ram_size,
+        ram_size / 1024 / 1024
+    );
 
     match hv.map_ram(ram_ptr, 0, ram_size) {
         Ok(()) => println!("   ✓ RAM 映射成功！vCPU 可以访问内核了"),
@@ -467,12 +486,12 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     let gdt_base = crate::vmm::loader::GDT_ADDR;
     let gdt_limit = (crate::vmm::loader::GDT_ENTRIES * 8 - 1) as u16;
     hv.set_vcpu_entry(
-        regs.rip, regs.rsp, regs.rsi,
-        regs.cr0, regs.cr3, regs.cr4, regs.efer,
-        gdt_base, gdt_limit,
+        regs.rip, regs.rsp, regs.rsi, regs.cr0, regs.cr3, regs.cr4, regs.efer, gdt_base, gdt_limit,
     )?;
-    println!("   ✓ RIP={:#x} RSP={:#x} CR3={:#x} EFER={:#x}",
-        regs.rip, regs.rsp, regs.cr3, regs.efer);
+    println!(
+        "   ✓ RIP={:#x} RSP={:#x} CR3={:#x} EFER={:#x}",
+        regs.rip, regs.rsp, regs.cr3, regs.efer
+    );
 
     hv.start().await?;
 
@@ -481,11 +500,8 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!();
 
     // 限时运行
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(cmd.timeout_secs),
-        hv.run(),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(std::time::Duration::from_secs(cmd.timeout_secs), hv.run()).await;
 
     let exit_code = match result {
         Ok(Ok(code)) => {

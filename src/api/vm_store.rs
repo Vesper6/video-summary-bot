@@ -244,8 +244,7 @@ impl VmStore {
             )
         });
 
-        std::fs::create_dir_all(&dir)
-            .map_err(|e| Error::Config(format!("create vm dir: {e}")))?;
+        std::fs::create_dir_all(&dir).map_err(|e| Error::Config(format!("create vm dir: {e}")))?;
         self.save_spec(&spec)?;
 
         let runtime = RuntimeState {
@@ -271,7 +270,8 @@ impl VmStore {
     pub fn update(&self, name: &str, req: UpdateVmRequest) -> Result<VmSummary> {
         let mut spec = self.load_spec(name)?;
         let runtime = self.load_runtime(name);
-        if matches!(runtime.state, VmState::Starting | VmState::Running) || self.is_boot_active(name)
+        if matches!(runtime.state, VmState::Starting | VmState::Running)
+            || self.is_boot_active(name)
         {
             return Err(Error::Config(format!(
                 "VM '{name}' is running — stop it before editing"
@@ -426,7 +426,10 @@ impl VmStore {
         }
         if self.is_boot_active(name) && crate::guest_control::request_stop() {
             // 真实 boot：请求 vCPU 优雅退出，boot 任务结束后回写 stopped/crashed
-            self.push_console(name, "[vsb] stop requested — waiting for vCPU to exit".to_string());
+            self.push_console(
+                name,
+                "[vsb] stop requested — waiting for vCPU to exit".to_string(),
+            );
             self.set_state(name, VmState::Stopping)?;
         } else {
             self.push_console(name, "[vsb] VM stopped".to_string());
@@ -584,9 +587,7 @@ mod tests {
         assert_eq!(vm.memory_mb, 4096);
 
         store.set_state("beta", VmState::Running).unwrap();
-        assert!(store
-            .update("beta", UpdateVmRequest::default())
-            .is_err());
+        assert!(store.update("beta", UpdateVmRequest::default()).is_err());
     }
 
     #[test]

@@ -6,10 +6,12 @@ use std::net::Ipv4Addr;
 
 /// NAT 代理。
 pub struct NatProxy {
+    /// 外部网卡名（None 表示自动选择）
     pub external_interface: Option<String>,
 }
 
 impl NatProxy {
+    /// 创建 NAT 代理。
     pub fn new() -> Self {
         Self {
             external_interface: None,

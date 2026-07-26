@@ -6,23 +6,23 @@
 //! - 代理自动注入 ANTHROPIC_AUTH_TOKEN，转发给真实 API
 //! - 支持流式响应（SSE）透传
 
-use std::net::SocketAddr;
 use axum::{
-    Router,
     body::Body,
     extract::{Request, State},
     http::{HeaderValue, StatusCode},
     response::Response,
     routing::any,
+    Router,
 };
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use crate::error::{Error, Result};
 
 #[derive(Clone)]
 struct ProxyState {
-    http:     reqwest::Client,
-    api_key:  String,
+    http: reqwest::Client,
+    api_key: String,
     base_url: String,
 }
 
@@ -40,7 +40,11 @@ pub async fn run_llm_proxy(bind_addr: SocketAddr) -> Result<()> {
         .build()
         .map_err(|e| Error::Agent(format!("HTTP client: {e}")))?;
 
-    let state = Arc::new(ProxyState { http, api_key, base_url });
+    let state = Arc::new(ProxyState {
+        http,
+        api_key,
+        base_url,
+    });
 
     let app = Router::new()
         .route("/*path", any(proxy_handler))
@@ -64,7 +68,9 @@ async fn proxy_handler(
     State(state): State<Arc<ProxyState>>,
     req: Request,
 ) -> std::result::Result<Response, StatusCode> {
-    let path = req.uri().path_and_query()
+    let path = req
+        .uri()
+        .path_and_query()
         .map(|pq| pq.as_str())
         .unwrap_or("/");
 
@@ -74,14 +80,8 @@ async fn proxy_handler(
 
     // 复制原始 headers，但覆盖认证
     let mut headers = req.headers().clone();
-    headers.insert(
-        "x-api-key",
-        HeaderValue::from_str(&state.api_key).unwrap(),
-    );
-    headers.insert(
-        "anthropic-version",
-        HeaderValue::from_static("2023-06-01"),
-    );
+    headers.insert("x-api-key", HeaderValue::from_str(&state.api_key).unwrap());
+    headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
     // 移除可能冲突的 host header
     headers.remove("host");
 
@@ -90,7 +90,8 @@ async fn proxy_handler(
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    let upstream_resp = state.http
+    let upstream_resp = state
+        .http
         .request(method, &upstream)
         .headers(headers)
         .body(body_bytes)
@@ -103,7 +104,10 @@ async fn proxy_handler(
 
     let status = upstream_resp.status();
     let resp_headers = upstream_resp.headers().clone();
-    let resp_body = upstream_resp.bytes().await.map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let resp_body = upstream_resp
+        .bytes()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
 
     let mut builder = Response::builder().status(status.as_u16());
     for (k, v) in &resp_headers {

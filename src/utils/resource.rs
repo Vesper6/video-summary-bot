@@ -41,7 +41,8 @@ pub fn resource_dir() -> std::path::PathBuf {
 pub fn probe() -> ProbeResult {
     let dir = resource_dir();
     if !dir.exists() {
-        let msg: &'static str = Box::leak(format!("{} does not exist", dir.display()).into_boxed_str());
+        let msg: &'static str =
+            Box::leak(format!("{} does not exist", dir.display()).into_boxed_str());
         return ProbeResult::err("resources", msg);
     }
 
@@ -49,7 +50,8 @@ pub fn probe() -> ProbeResult {
     for r in &required {
         let sub = dir.join(r);
         if !sub.exists() {
-            let msg: &'static str = Box::leak(format!("missing: {}/{}", dir.display(), r).into_boxed_str());
+            let msg: &'static str =
+                Box::leak(format!("missing: {}/{}", dir.display(), r).into_boxed_str());
             return ProbeResult::err("resources", msg);
         }
     }

@@ -3,7 +3,7 @@
 #[cfg(feature = "gui")]
 mod desktop;
 
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 /// 桌面 GUI 选项。
 #[derive(Debug, Clone)]
@@ -27,12 +27,12 @@ impl Default for DesktopOpts {
 pub fn run(opts: DesktopOpts) -> Result<i32> {
     #[cfg(feature = "gui")]
     {
-        return desktop::run(opts);
+        desktop::run(opts)
     }
     #[cfg(not(feature = "gui"))]
     {
         let _ = opts;
-        Err(Error::Cli(
+        Err(crate::error::Error::Cli(
             "桌面 GUI 未编译进此构建。请运行: cargo build --features gui".into(),
         ))
     }

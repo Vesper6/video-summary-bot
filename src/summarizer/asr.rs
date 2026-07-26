@@ -8,10 +8,12 @@ use crate::error::Result;
 
 /// ASR 转写器（占位实现）。
 pub struct AsrTranscriber {
-    pub model: String, // tiny / base / small / medium / large
+    /// Whisper 模型规格（tiny / base / small / medium / large）
+    pub model: String,
 }
 
 impl AsrTranscriber {
+    /// 创建转写器。
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             model: model.into(),

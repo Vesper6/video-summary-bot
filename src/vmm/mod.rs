@@ -37,7 +37,6 @@ pub enum VmState {
     Crashed,
 }
 
-
 impl VmState {
     /// 是否处于运行状态。
     pub fn is_running(&self) -> bool {

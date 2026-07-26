@@ -104,10 +104,7 @@ pub async fn run_boot(opts: BootOptions, log: BootLog) -> Result<i32> {
     log_line(&log, format!("[vsb] booting VM '{}' …", config.name));
     log_line(
         &log,
-        format!(
-            "[vsb] {} vCPU, {} MB RAM",
-            config.cpus, config.memory_mb
-        ),
+        format!("[vsb] {} vCPU, {} MB RAM", config.cpus, config.memory_mb),
     );
     log_line(&log, format!("[vsb] kernel: {}", opts.kernel.display()));
     log_line(&log, format!("[vsb] initrd: {}", opts.initrd.display()));
@@ -162,32 +159,18 @@ pub async fn run_boot(opts: BootOptions, log: BootLog) -> Result<i32> {
     let gdt_base = crate::vmm::loader::GDT_ADDR;
     let gdt_limit = (crate::vmm::loader::GDT_ENTRIES * 8 - 1) as u16;
     hv.set_vcpu_entry(
-        regs.rip,
-        regs.rsp,
-        regs.rsi,
-        regs.cr0,
-        regs.cr3,
-        regs.cr4,
-        regs.efer,
-        gdt_base,
-        gdt_limit,
+        regs.rip, regs.rsp, regs.rsi, regs.cr0, regs.cr3, regs.cr4, regs.efer, gdt_base, gdt_limit,
     )?;
     log_line(
         &log,
-        format!(
-            "[vsb] vCPU entry RIP={:#x} CR3={:#x}",
-            regs.rip, regs.cr3
-        ),
+        format!("[vsb] vCPU entry RIP={:#x} CR3={:#x}", regs.rip, regs.cr3),
     );
 
     hv.start().await?;
     log_line(&log, "[vsb] vCPU running — guest serial on COM1 (ttyS0)…");
 
-    let result = tokio::time::timeout(
-        std::time::Duration::from_secs(opts.timeout_secs),
-        hv.run(),
-    )
-    .await;
+    let result =
+        tokio::time::timeout(std::time::Duration::from_secs(opts.timeout_secs), hv.run()).await;
 
     let exit_code = match result {
         Ok(Ok(code)) => {

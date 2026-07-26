@@ -9,8 +9,7 @@ static INIT: Once = Once::new();
 /// 初始化日志（全局只执行一次）。
 pub fn init() {
     INIT.call_once(|| {
-        let filter = EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| EnvFilter::new("info"));
+        let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
         let log_format = std::env::var("LOG_FORMAT").unwrap_or_else(|_| "text".to_string());
 

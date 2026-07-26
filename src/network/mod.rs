@@ -14,8 +14,11 @@ use serde::{Deserialize, Serialize};
 /// 网络配置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {
+    /// NAT 子网（CIDR）
     pub subnet: String,
+    /// 网关 / 代理地址
     pub gateway: String,
+    /// LLM 代理监听端口
     pub llm_proxy_port: u16,
 }
 

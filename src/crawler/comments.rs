@@ -28,7 +28,10 @@ pub struct CommentsCrawler {
 impl CommentsCrawler {
     /// 创建评论抓取器。
     pub fn new(video_url: String, max_count: usize) -> Self {
-        Self { video_url, max_count }
+        Self {
+            video_url,
+            max_count,
+        }
     }
 
     /// 抓取评论（在 VM 内调用 headless Chromium）。

@@ -205,7 +205,11 @@ async fn summarize_text(
     println!(
         "📝 文字稿：{} 字{}",
         char_count,
-        if char_count > 10000 { "（较长，将截取前 10000 字）" } else { "" }
+        if char_count > 10000 {
+            "（较长，将截取前 10000 字）"
+        } else {
+            ""
+        }
     );
     let text = if char_count > 10000 {
         &text.chars().take(10000).collect::<String>()
@@ -213,9 +217,7 @@ async fn summarize_text(
         text
     };
 
-    let prompt = format!(
-        "以下是视频文字稿，请生成结构化总结：\n\n{text}"
-    );
+    let prompt = format!("以下是视频文字稿，请生成结构化总结：\n\n{text}");
 
     println!("─────────────────────────────────────");
     let result = call_claude(claude, &prompt, cmd).await?;
@@ -226,9 +228,7 @@ async fn summarize_text(
 
 /// 构造总结 system prompt（CLI 与 HTTP API 共用）。
 fn build_system_prompt(language: &str) -> String {
-    format!(
-        "你是专业的视频内容分析助手，擅长生成结构化的视频总结报告。请用{language}输出。"
-    )
+    format!("你是专业的视频内容分析助手，擅长生成结构化的视频总结报告。请用{language}输出。")
 }
 
 /// 构造总结 user prompt（CLI 与 HTTP API 共用）。
@@ -249,11 +249,7 @@ fn build_user_prompt(level: CrawlLevel, content: &str) -> String {
 }
 
 /// 调用 Claude 生成总结。
-async fn call_claude(
-    claude: &ClaudeClient,
-    content: &str,
-    cmd: &SummarizeCmd,
-) -> Result<String> {
+async fn call_claude(claude: &ClaudeClient, content: &str, cmd: &SummarizeCmd) -> Result<String> {
     let system = build_system_prompt(&cmd.language);
     let user_prompt = build_user_prompt(cmd.level, content);
 
@@ -357,15 +353,12 @@ fn print_and_save(
     println!("\n─────────────────────────────────────");
 
     if let Some(output_dir) = output {
-        let slug = title
-            .map(slugify)
-            .unwrap_or_else(|| slugify(url));
+        let slug = title.map(slugify).unwrap_or_else(|| slugify(url));
         std::fs::create_dir_all(output_dir)
             .map_err(|e| Error::Other(format!("create dir failed: {e}")))?;
         let path = output_dir.join(format!("{slug}.md"));
         let md = format!("# 视频总结\n\n**URL**: {url}\n\n---\n\n{result}");
-        std::fs::write(&path, &md)
-            .map_err(|e| Error::Other(format!("write failed: {e}")))?;
+        std::fs::write(&path, &md).map_err(|e| Error::Other(format!("write failed: {e}")))?;
         println!("✅ 已保存：{}", path.display());
     }
     Ok(())
@@ -374,13 +367,22 @@ fn print_and_save(
 /// 运行 crawl 子命令（尚未实现，依赖 micro VM）。
 pub async fn run_crawl(cmd: CrawlCmd, _config: &AppConfig) -> Result<i32> {
     eprintln!("❌ crawl 命令需要 micro VM 支持，尚未实现。");
-    eprintln!("   提示：使用 `vsb summarize --url {}` 获取视频总结。", cmd.url);
+    eprintln!(
+        "   提示：使用 `vsb summarize --url {}` 获取视频总结。",
+        cmd.url
+    );
     Ok(1)
 }
 
 fn slugify(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .chars()
         .take(60)

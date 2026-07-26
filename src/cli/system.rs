@@ -35,13 +35,17 @@ pub async fn run_doctor(_cmd: DoctorCmd, _config: &AppConfig) -> Result<i32> {
     required_total += 1;
     let claude = crate::agents::claude::probe();
     print_check("Claude API", &claude, false);
-    if claude.is_ok() { required_ok += 1; }
+    if claude.is_ok() {
+        required_ok += 1;
+    }
 
     // 2. yt-dlp（字幕下载）
     required_total += 1;
     let ytdlp = probe_ytdlp();
     print_check("yt-dlp", &ytdlp, false);
-    if ytdlp.is_ok() { required_ok += 1; }
+    if ytdlp.is_ok() {
+        required_ok += 1;
+    }
 
     // ── 可选依赖 ────────────────────────────────
     println!("\n【可选】");
@@ -87,11 +91,7 @@ pub async fn run_doctor(_cmd: DoctorCmd, _config: &AppConfig) -> Result<i32> {
     }
 }
 
-fn print_check(
-    name: &str,
-    result: &crate::hypervisor::ProbeResult,
-    optional: bool,
-) {
+fn print_check(name: &str, result: &crate::hypervisor::ProbeResult, optional: bool) {
     let prefix = if result.is_ok() {
         "  ✅"
     } else if optional {

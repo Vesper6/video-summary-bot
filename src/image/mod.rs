@@ -49,7 +49,11 @@ pub trait DiskImage: Send + Sync {
 }
 
 /// 创建指定格式的镜像。
-pub fn create_image(path: &Path, format: ImageFormat, size_bytes: u64) -> Result<Box<dyn DiskImage>> {
+pub fn create_image(
+    path: &Path,
+    format: ImageFormat,
+    size_bytes: u64,
+) -> Result<Box<dyn DiskImage>> {
     match format {
         ImageFormat::Raw => raw::RawImage::create(path, size_bytes).map(|i| Box::new(i) as _),
         ImageFormat::Qcow2 => qcow2::Qcow2Image::create(path, size_bytes).map(|i| Box::new(i) as _),

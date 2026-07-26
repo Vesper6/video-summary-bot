@@ -6,14 +6,14 @@
 //! - VirtIO MMIO 总线初始化
 //! - vCPU 线程启动 + MMIO exit 分发
 
-use std::sync::Arc;
 use parking_lot::RwLock;
+use std::sync::Arc;
 
-use crate::devices::{VirtioMmioBus, VirtioConsole};
+use crate::devices::{VirtioConsole, VirtioMmioBus};
 use crate::error::{Error, Result};
-use crate::vmm::{VmConfig, VmState};
-use crate::vmm::loader::{KernelLoader, InitialRegs, write_gdt};
+use crate::vmm::loader::{write_gdt, InitialRegs, KernelLoader};
 use crate::vmm::memory::GuestRam;
+use crate::vmm::{VmConfig, VmState};
 
 /// VMM 实例。
 ///
@@ -48,7 +48,8 @@ impl Vmm {
 
         // MMIO 总线：注册 Console
         let mut bus = VirtioMmioBus::new();
-        let console_addr = bus.add_device(Arc::clone(&console) as Arc<dyn crate::devices::VirtioDevice>);
+        let console_addr =
+            bus.add_device(Arc::clone(&console) as Arc<dyn crate::devices::VirtioDevice>);
         tracing::info!("VirtIO Console MMIO base: {:#x}", console_addr);
 
         Ok(Self {
@@ -64,20 +65,20 @@ impl Vmm {
 
     /// 加载内核 + initrd，写入 boot_params 和 GDT。
     pub fn load_kernel(&self) -> Result<InitialRegs> {
-        let kernel = self.config.kernel.as_ref()
+        let kernel = self
+            .config
+            .kernel
+            .as_ref()
             .ok_or_else(|| Error::Vmm("kernel path not set".into()))?;
 
         let initrd = self.config.initramfs.as_deref();
-        let cmdline = self.config.cmdline.as_deref()
+        let cmdline = self
+            .config
+            .cmdline
+            .as_deref()
             .unwrap_or("console=hvc0 root=/dev/vda rw init=/sbin/init");
 
-        let result = KernelLoader::load(
-            &self.ram,
-            kernel,
-            initrd,
-            cmdline,
-            self.config.memory_mb,
-        )?;
+        let result = KernelLoader::load(&self.ram, kernel, initrd, cmdline, self.config.memory_mb)?;
 
         // 写 GDT + identity-map 页表（long mode 必需）
         write_gdt(&self.ram)?;
@@ -85,11 +86,8 @@ impl Vmm {
 
         // 使用 64-bit 入口（保护模式内核代码 + 0x200）
         let entry_64 = crate::vmm::loader::KERNEL_ENTRY_64;
-        let regs = InitialRegs::for_linux_64(
-            entry_64,
-            result.boot_params_addr,
-            self.config.memory_mb,
-        );
+        let regs =
+            InitialRegs::for_linux_64(entry_64, result.boot_params_addr, self.config.memory_mb);
 
         tracing::info!(
             "VM '{}' loaded: kernel_entry={:#x} boot_params={:#x} initrd={:?}",

@@ -52,7 +52,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # 特性按平台选择：kvm 仅 Linux（kvm-ioctls 是 unix-only），whvp 仅 Windows
+        include:
+          - os: ubuntu-latest
+            features: api,gui,kvm
+          - os: windows-latest
+            features: api,gui,whvp
+          - os: macos-latest
+            features: api,gui
 
     steps:
       - name: Checkout
@@ -63,6 +70,10 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Linux GUI dependencies (tao/wry)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev
+
       - name: Cache cargo registry & target
         uses: Swatinem/rust-cache@v2
         with:
@@ -72,7 +83,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets --features ${{ matrix.features }} -- -D warnings
 
   # ===========================================
   # 2. 构建测试（debug + release）
@@ -86,6 +97,13 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         profile: [debug, release]
+        include:
+          - os: ubuntu-latest
+            features: api,gui,kvm
+          - os: windows-latest
+            features: api,gui,whvp
+          - os: macos-latest
+            features: api,gui
 
     steps:
       - name: Checkout
@@ -94,17 +112,22 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux GUI dependencies (tao/wry)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev
+
       - name: Cache cargo registry & target
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
 
       - name: Build (${{ matrix.profile }})
+        shell: bash
         run: |
           if [ "${{ matrix.profile }}" = "release" ]; then
-            cargo build --release --locked --all-features
+            cargo build --release --locked --features ${{ matrix.features }}
           else
-            cargo build --locked --all-features
+            cargo build --locked --features ${{ matrix.features }}
           fi
 
       - name: Upload debug binary
@@ -125,7 +148,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            features: api,gui,kvm
+          - os: windows-latest
+            features: api,gui,whvp
+          - os: macos-latest
+            features: api,gui
 
     steps:
       - name: Checkout
@@ -134,13 +163,17 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux GUI dependencies (tao/wry)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libxdo-dev
+
       - name: Cache cargo registry & target
         uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
 
       - name: Run unit tests
-        run: cargo test --all-features --locked -- --nocapture
+        run: cargo test --features ${{ matrix.features }} --locked -- --nocapture
 
   # ===========================================
   # 4. MSRV（最低支持 Rust 版本）

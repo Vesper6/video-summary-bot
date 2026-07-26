@@ -5,17 +5,19 @@
 //! 2. 发送 guest-sync-delimited，等待 Guest 回复同步 ID
 //! 3. 后续发送任意命令（JSON），读取 {"return": ...} 响应
 
-use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::error::{Error, Result};
 
 /// QEMU GA 命令。
 #[derive(Debug, Serialize)]
 pub struct GaCommand {
+    /// 命令名（如 guest-ping）
     pub execute: &'static str,
+    /// 命令参数（JSON）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub arguments: Option<Value>,
 }
@@ -24,14 +26,25 @@ pub struct GaCommand {
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 pub enum GaResponse {
-    Ok    { r#return: Value },
-    Error { error: GaError },
+    /// 成功响应
+    Ok {
+        /// `return` 字段的 JSON 值
+        r#return: Value,
+    },
+    /// 错误响应
+    Error {
+        /// 错误详情
+        error: GaError,
+    },
 }
 
+/// QEMU GA 错误详情。
 #[derive(Debug, Deserialize)]
 pub struct GaError {
+    /// 错误类别
     pub class: String,
-    pub desc:  String,
+    /// 错误描述
+    pub desc: String,
 }
 
 /// VirtIO Serial 上的 Guest Agent 客户端（宿主侧）。
@@ -39,10 +52,11 @@ pub struct GuestAgentClient {
     /// VirtIO Serial 字符设备句柄（宿主侧映射的文件描述符）
     /// 实际上是 VMM 通过 VirtIO Console 暴露给宿主的 FIFO / socket
     serial_path: std::path::PathBuf,
-    timeout:     Duration,
+    timeout: Duration,
 }
 
 impl GuestAgentClient {
+    /// 创建客户端（默认超时 30 秒）。
     pub fn new(serial_path: std::path::PathBuf) -> Self {
         Self {
             serial_path,
@@ -50,6 +64,7 @@ impl GuestAgentClient {
         }
     }
 
+    /// 设置读写超时。
     pub fn with_timeout(mut self, t: Duration) -> Self {
         self.timeout = t;
         self
@@ -63,13 +78,10 @@ impl GuestAgentClient {
         #[cfg(unix)]
         let mut stream = {
             use tokio::net::UnixStream;
-            tokio::time::timeout(
-                self.timeout,
-                UnixStream::connect(&self.serial_path),
-            )
-            .await
-            .map_err(|_| Error::Ipc("connect timeout".into()))?
-            .map_err(|e| Error::Ipc(format!("connect failed: {e}")))?
+            tokio::time::timeout(self.timeout, UnixStream::connect(&self.serial_path))
+                .await
+                .map_err(|_| Error::Ipc("connect timeout".into()))?
+                .map_err(|e| Error::Ipc(format!("connect failed: {e}")))?
         };
 
         #[cfg(windows)]
@@ -83,7 +95,9 @@ impl GuestAgentClient {
         tracing::debug!("GA: connected to {:?}", self.serial_path);
 
         // 1. 发 0xFF 重置 Guest 缓冲区
-        stream.write_all(&[0xFF]).await
+        stream
+            .write_all(&[0xFF])
+            .await
             .map_err(|e| Error::Ipc(format!("write 0xFF failed: {e}")))?;
 
         // 2. guest-sync-delimited
@@ -94,7 +108,9 @@ impl GuestAgentClient {
         let mut payload = vec![0xFF_u8];
         payload.extend_from_slice(&sync_cmd);
         payload.push(b'\n');
-        stream.write_all(&payload).await
+        stream
+            .write_all(&payload)
+            .await
             .map_err(|e| Error::Ipc(format!("write sync failed: {e}")))?;
 
         // 3. 等待含匹配 ID 的响应
@@ -114,7 +130,10 @@ impl GuestAgentClient {
         }
 
         tracing::info!("GA: handshake OK (sync_id={})", sync_id);
-        Ok(GuestAgentSession { stream, timeout: self.timeout })
+        Ok(GuestAgentSession {
+            stream,
+            timeout: self.timeout,
+        })
     }
 }
 
@@ -129,16 +148,17 @@ pub struct GuestAgentSession {
 
 impl GuestAgentSession {
     /// 发送命令，返回 `return` 字段的 JSON 值。
-    pub async fn execute(
-        &mut self,
-        cmd: &'static str,
-        args: Option<Value>,
-    ) -> Result<Value> {
-        let payload = serde_json::to_vec(&GaCommand { execute: cmd, arguments: args })?;
+    pub async fn execute(&mut self, cmd: &'static str, args: Option<Value>) -> Result<Value> {
+        let payload = serde_json::to_vec(&GaCommand {
+            execute: cmd,
+            arguments: args,
+        })?;
         let mut msg = payload;
         msg.push(b'\n');
 
-        self.stream.write_all(&msg).await
+        self.stream
+            .write_all(&msg)
+            .await
             .map_err(|e| Error::Ipc(format!("write failed: {e}")))?;
 
         match read_response_timeout(&mut self.stream, self.timeout).await? {
@@ -150,20 +170,17 @@ impl GuestAgentSession {
     }
 
     /// 向 Guest 发送视频总结任务。
-    pub async fn run_summary(
-        &mut self,
-        url: &str,
-        level: &str,
-        language: &str,
-    ) -> Result<String> {
-        let ret = self.execute(
-            "vsb-run-summary",
-            Some(serde_json::json!({
-                "url":      url,
-                "level":    level,
-                "language": language,
-            })),
-        ).await?;
+    pub async fn run_summary(&mut self, url: &str, level: &str, language: &str) -> Result<String> {
+        let ret = self
+            .execute(
+                "vsb-run-summary",
+                Some(serde_json::json!({
+                    "url":      url,
+                    "level":    level,
+                    "language": language,
+                })),
+            )
+            .await?;
 
         let subtitle = ret["subtitle"].as_str().unwrap_or("").to_string();
         Ok(subtitle)
@@ -177,10 +194,12 @@ impl GuestAgentSession {
 
     /// 关闭 Guest。
     pub async fn shutdown(&mut self) -> Result<()> {
-        let _ = self.execute(
-            "guest-shutdown",
-            Some(serde_json::json!({ "mode": "powerdown" })),
-        ).await;
+        let _ = self
+            .execute(
+                "guest-shutdown",
+                Some(serde_json::json!({ "mode": "powerdown" })),
+            )
+            .await;
         Ok(())
     }
 }
@@ -198,7 +217,9 @@ where
     tokio::time::timeout(timeout, async {
         let mut tmp = [0u8; 1];
         loop {
-            stream.read_exact(&mut tmp).await
+            stream
+                .read_exact(&mut tmp)
+                .await
                 .map_err(|e| Error::Ipc(format!("read failed: {e}")))?;
 
             // 跳过 0xFF 哨兵字节

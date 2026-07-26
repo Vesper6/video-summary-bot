@@ -7,17 +7,17 @@
 //! - queue 0: receiveq（Guest → Host 数据，即 Guest 写、Host 读）
 //! - queue 1: transmitq（Host → Guest 数据，即 Host 写、Guest 读）
 
-use std::sync::Arc;
 use parking_lot::Mutex;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use crate::devices::virtio_mmio::{VirtioDevice, VirtioDeviceId, Virtqueue};
 use crate::error::Result;
 
 /// VirtIO Console 设备功能位
-const VIRTIO_CONSOLE_F_SIZE:       u64 = 1 << 0;
+const VIRTIO_CONSOLE_F_SIZE: u64 = 1 << 0;
 #[allow(dead_code)] // 多端口支持接通后使用
-const VIRTIO_CONSOLE_F_MULTIPORT:  u64 = 1 << 1;
+const VIRTIO_CONSOLE_F_MULTIPORT: u64 = 1 << 1;
 
 /// Console 配置空间
 #[repr(C)]
@@ -54,7 +54,7 @@ impl VirtioConsole {
     pub fn new() -> (
         Arc<Self>,
         mpsc::Receiver<Vec<u8>>, // 宿主读取 Guest 输出
-        mpsc::Sender<Vec<u8>>,  // 宿主写入 Guest 输入
+        mpsc::Sender<Vec<u8>>,   // 宿主写入 Guest 输入
     ) {
         let (tx_sender, tx_receiver) = mpsc::channel::<Vec<u8>>(256);
         let (rx_sender, rx_receiver) = mpsc::channel::<Vec<u8>>(256);

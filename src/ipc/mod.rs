@@ -6,7 +6,6 @@
 
 pub mod guest_agent;
 
-
 /// IPC 端点路径（平台自适应）。
 pub fn ipc_path(vm_name: &str) -> std::path::PathBuf {
     #[cfg(target_os = "windows")]

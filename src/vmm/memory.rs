@@ -30,8 +30,8 @@ impl GuestRam {
             return Err("size must be non-zero and 4KB aligned");
         }
 
-        let layout = std::alloc::Layout::from_size_align(size, 4096)
-            .map_err(|_| "invalid memory layout")?;
+        let layout =
+            std::alloc::Layout::from_size_align(size, 4096).map_err(|_| "invalid memory layout")?;
         // SAFETY: layout 非零、按页对齐
         let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
         if ptr.is_null() {

@@ -9,12 +9,12 @@ use std::sync::Arc;
 use std::convert::Infallible;
 
 use axum::{
-    Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
     response::sse::{Event, KeepAlive, Sse},
+    response::IntoResponse,
     routing::{get, post},
+    Json, Router,
 };
 use futures::stream::Stream;
 use serde::Serialize;
@@ -87,8 +87,7 @@ pub fn spawn_local_server() -> Result<(u16, std::thread::JoinHandle<()>)> {
                 .build()
                 .expect("tokio runtime");
             rt.block_on(async move {
-                let listener = tokio::net::TcpListener::from_std(listener)
-                    .expect("tokio listener");
+                let listener = tokio::net::TcpListener::from_std(listener).expect("tokio listener");
                 if let Err(e) = axum::serve(listener, app).await {
                     tracing::error!("gui server error: {e}");
                 }
@@ -358,6 +357,10 @@ impl From<Error> for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let msg = self.0.to_string();
-        (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": msg }))).into_response()
+        (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": msg })),
+        )
+            .into_response()
     }
 }

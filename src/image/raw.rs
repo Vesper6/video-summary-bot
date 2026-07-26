@@ -18,6 +18,7 @@ pub struct RawImage {
 }
 
 impl RawImage {
+    /// 创建指定大小的原始镜像文件（截断已有内容）。
     pub fn create(path: &Path, size_bytes: u64) -> Result<Self> {
         let file = OpenOptions::new()
             .read(true)
@@ -32,6 +33,7 @@ impl RawImage {
         })
     }
 
+    /// 打开已有的原始镜像文件。
     pub fn open(path: &Path) -> Result<Self> {
         let file = OpenOptions::new().read(true).write(true).open(path)?;
         let capacity = file.metadata()?.len();
