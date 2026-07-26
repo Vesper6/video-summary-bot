@@ -2,7 +2,8 @@
 //!
 //! - [`virtio_mmio`]    — VirtIO MMIO 传输层 + 总线 ✅
 //! - [`virtio_console`] — VirtIO Console（宿主↔Guest 串口通信） ✅
-//! - [`virtio_block`]   — virtio-blk（块设备） 🚧
+//! - [`virtio_block`]   — virtio-blk（块设备） ✅
+//! - [`pit`]            — 8253/8254 PIT 定时器（TSC 校准用） ✅
 //! - [`virtio_net`]     — virtio-net（NAT 网络） 🚧
 //! - [`virtio_fs`]      — virtiofs（共享目录） 🚧
 //! - [`virtio_gpu`]     — virtio-gpu 🚧
@@ -10,6 +11,7 @@
 //! - [`virtio_input`]   — virtio-input 🚧
 //! - [`serial`]         — 16550A 串口（非 VirtIO） 🚧
 
+pub mod pit;
 pub mod serial;
 pub mod virtio_block;
 pub mod virtio_console;
@@ -20,6 +22,8 @@ pub mod virtio_mmio;
 pub mod virtio_net;
 pub mod virtio_snd;
 
+pub use pit::Pit;
+pub use virtio_block::VirtioBlock;
 pub use virtio_console::VirtioConsole;
 pub use virtio_mmio::{VirtioDevice, VirtioDeviceId, VirtioMmio, VirtioMmioBus};
 

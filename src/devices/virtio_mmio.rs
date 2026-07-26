@@ -196,10 +196,17 @@ pub trait VirtioDevice: Send + Sync {
     fn write_config(&self, _offset: u64, _value: u32, _size: u8) {}
 }
 
+/// InterruptStatus bit0：used ring 有更新
+pub const VIRTIO_MMIO_INT_VRING: u32 = 1 << 0;
+/// InterruptStatus bit1：设备配置变化
+pub const VIRTIO_MMIO_INT_CONFIG: u32 = 1 << 1;
+
 /// VirtIO MMIO 传输层（每个设备一个实例）。
 pub struct VirtioMmio {
     /// MMIO 基址（GPA）
     pub base_addr: u64,
+    /// 分配给此设备的 IRQ 线（写入内核 `virtio_mmio.device=…:<irq>` 参数）
+    pub irq: u8,
     /// 设备实现
     device: Arc<dyn VirtioDevice>,
     /// 内部状态
@@ -216,6 +223,8 @@ struct VirtioMmioState {
     queues: Vec<Virtqueue>,
     interrupt_status: u32,
     config_gen: u32,
+    /// 待注入的 IRQ 边沿（raise 后置位，take 后清除）
+    irq_pending: bool,
 }
 
 impl VirtioMmio {
@@ -224,10 +233,11 @@ impl VirtioMmio {
     const VENDOR: u32 = 0x5545_4D51; // "QEMU"
 
     /// 创建 MMIO 传输层实例（默认预分配 4 个队列）。
-    pub fn new(base_addr: u64, device: Arc<dyn VirtioDevice>) -> Self {
+    pub fn new(base_addr: u64, irq: u8, device: Arc<dyn VirtioDevice>) -> Self {
         let num_queues = 4; // 默认预分配 4 个队列
         Self {
             base_addr,
+            irq,
             device,
             state: Mutex::new(VirtioMmioState {
                 queues: (0..num_queues).map(|_| Virtqueue::default()).collect(),
@@ -334,8 +344,10 @@ impl VirtioMmio {
                     })
                     .collect();
                 drop(state);
-                if let Err(e) = self.device.notify(value, &queues) {
-                    tracing::error!("virtio notify error: {e}");
+                match self.device.notify(value, &queues) {
+                    // 请求已同步处理完，通知 guest used ring 有更新
+                    Ok(()) => self.raise_interrupt(VIRTIO_MMIO_INT_VRING),
+                    Err(e) => tracing::error!("virtio notify error: {e}"),
                 }
             }
 
@@ -417,9 +429,17 @@ impl VirtioMmio {
 
     /// 触发设备中断（由设备实现调用，通知 Guest 有数据）。
     pub fn raise_interrupt(&self, reason: u32) {
-        self.state.lock().interrupt_status |= reason;
+        let mut state = self.state.lock();
+        state.interrupt_status |= reason;
+        state.irq_pending = true;
         // 实际中断注入由 hypervisor 后端处理（WHVP/KVM IRQ 注入）
         tracing::debug!("virtio interrupt raised reason={:#x}", reason);
+    }
+
+    /// 取走一次待注入的 IRQ 边沿（供 vCPU run loop 轮询）。
+    pub fn take_irq_pending(&self) -> bool {
+        let mut state = self.state.lock();
+        std::mem::take(&mut state.irq_pending)
     }
 }
 
@@ -437,6 +457,8 @@ impl VirtioMmioBus {
     pub const BASE_ADDR: u64 = 0xA000_0000;
     /// 每个设备占 0x200 字节
     pub const DEVICE_SIZE: u64 = VIRTIO_MMIO_SIZE;
+    /// 第一个设备的 IRQ 线（10/11 通常空闲；PIC 模式下须 < 16）
+    pub const IRQ_BASE: u8 = 10;
 
     /// 创建空的 MMIO 总线。
     pub fn new() -> Self {
@@ -445,18 +467,43 @@ impl VirtioMmioBus {
         }
     }
 
-    /// 添加设备，自动分配 MMIO 地址。
+    /// 添加设备，自动分配 MMIO 地址与 IRQ 线。
     pub fn add_device(&mut self, device: Arc<dyn VirtioDevice>) -> u64 {
         let idx = self.devices.len() as u64;
         let base = Self::BASE_ADDR + idx * Self::DEVICE_SIZE;
+        let irq = Self::IRQ_BASE + idx as u8;
         tracing::info!(
-            "virtio device {:?} → MMIO {:#x}..{:#x}",
+            "virtio device {:?} → MMIO {:#x}..{:#x} irq {}",
             device.device_id(),
             base,
-            base + Self::DEVICE_SIZE
+            base + Self::DEVICE_SIZE,
+            irq
         );
-        self.devices.push(VirtioMmio::new(base, device));
+        self.devices.push(VirtioMmio::new(base, irq, device));
         base
+    }
+
+    /// 生成内核发现设备所需的 cmdline 参数
+    /// （无设备树/ACPI 时通过 `virtio_mmio.device=` 声明）。
+    pub fn kernel_cmdline_params(&self) -> String {
+        self.devices
+            .iter()
+            .map(|d| {
+                format!(
+                    "virtio_mmio.device=0x{:x}@0x{:x}:{}",
+                    VIRTIO_MMIO_SIZE, d.base_addr, d.irq
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// 取走一个待注入的 IRQ（供 vCPU run loop 每轮轮询）。
+    pub fn take_pending_irq(&self) -> Option<u8> {
+        self.devices
+            .iter()
+            .find(|d| d.take_irq_pending())
+            .map(|d| d.irq)
     }
 
     /// 处理 MMIO 读。

@@ -530,8 +530,8 @@ async fn boot(cmd: BootCmd) -> Result<i32> {
     println!("  ✅ 完整 vCPU run loop（exit reason 分发）");
     println!("  ✅ Linux kernel 启动 + serial console 输出");
     println!("  ✅ 内存初始化（e820 / zones / RAMDISK）");
-    println!("  ⏳ PIT + APIC 模拟（延迟校准）");
-    println!("  ⏳ VirtIO 块设备（挂载 rootfs）");
+    println!("  ✅ PIT (8253/8254) 模拟（TSC/LAPIC 延迟校准）");
+    println!("  ✅ VirtIO 块设备（挂载 rootfs，root=/dev/vda）");
     println!("  ⏳ Guest Agent 通信");
     println!();
     println!("💡 提示: RUST_LOG=info 可看到 guest 内核日志 (target: guest)");

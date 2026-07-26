@@ -366,12 +366,14 @@ cp .env.example .env
 
 ### 进行中 / 近期
 - [ ] B 站完整字幕获取（需 cookies，端到端验证）
+- [x] PIT (8253/8254) 定时器模拟（TSC/LAPIC 校准，解决 guest 卡在 port 0x42）
+- [x] virtio-blk 块设备（`root=/dev/vda` 挂载 rootfs.img，读/写/flush/GET_ID）
+- [x] WHVP MMIO 指令解码 + LAPIC IRQ 注入（VirtIO 设备中断）
 - [ ] `summarize` 输出 HTML 格式
-- [ ] PIT/APIC 定时器模拟（guest 延迟校准）
 
 ### 中期
 - [ ] Linux KVM 端到端 VM 启动验证
-- [ ] virtio-net / virtio-block 设备实现（`root=/dev/vda` 挂载 rootfs）
+- [ ] virtio-net 设备（NAT 网络，在 micro VM 内运行爬虫）
 
 ### 长期
 - [ ] macOS HVF 后端实现

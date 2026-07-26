@@ -36,8 +36,14 @@ Base: `/api`
 - `POST /summarize` → `cli::summary::summarize_api()`（yt-dlp 字幕 + Claude）
 - vCPU 真正停止（`guest_control::request_stop()`，API stop 已接）
 
-### 🔜 即将新增
-- PIT/APIC 定时器、VirtIO-Block → `root=/dev/vda` 完整 guest 引导
+### ✅ 完整 guest 引导设备（已交付）
+- **PIT (8253/8254)**：`src/devices/pit.rs`，端口 0x40-0x43 + 0x61；按宿主单调时钟推算
+  计数器递减 / OUT2 电平，解决 guest 卡在 port 0x42 的 TSC 校准死循环
+- **virtio-blk**：`src/devices/virtio_block.rs`，完整 split-virtqueue 处理（IN/OUT/FLUSH/GET_ID），
+  后端 rootfs.img；`core.rs` 自动注册并追加 `virtio_mmio.device=` cmdline 让内核发现 `/dev/vda`
+- **WHVP MMIO 模拟**：`src/vmm/mmio_insn.rs` 解码 mov/movzx 子集，`windows.rs` 的 MemoryAccess
+  exit 分发到 VirtIO 总线；启用 xAPIC 模拟 + `WHvRequestInterrupt` 注入设备 IRQ（向量 0x30+irq）
+- 平台无关的 `VmIoHandler` trait 把 PIT/MMIO/IRQ 接进 WHVP 与 KVM 两个后端
 
 ---
 

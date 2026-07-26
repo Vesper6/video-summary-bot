@@ -71,6 +71,23 @@ impl std::fmt::Display for ProbeResult {
     }
 }
 
+/// vCPU run loop 的设备 I/O 分发钩子。
+///
+/// 由 [`crate::vmm::Vmm`] 实现：PIT / VirtIO MMIO 总线等平台无关设备模型
+/// 通过它接入各 hypervisor 后端的 exit 处理。
+pub trait VmIoHandler: Send + Sync {
+    /// 端口读。返回 `None` 表示未处理（后端回退默认行为，如返回 0xFF）。
+    fn pio_read(&self, port: u16, size: u8) -> Option<u32>;
+    /// 端口写。返回 `false` 表示未处理。
+    fn pio_write(&self, port: u16, value: u32, size: u8) -> bool;
+    /// MMIO 读。返回 `None` 表示地址不属于任何设备。
+    fn mmio_read(&self, gpa: u64, size: u8) -> Option<u64>;
+    /// MMIO 写。返回 `false` 表示地址不属于任何设备。
+    fn mmio_write(&self, gpa: u64, value: u64, size: u8) -> bool;
+    /// 取走一个待注入的 IRQ 线号（run loop 每轮轮询，注入后边沿清除）。
+    fn take_pending_irq(&self) -> Option<u8>;
+}
+
 /// Hypervisor 平台 trait。
 #[async_trait]
 pub trait Hypervisor: Send + Sync {
@@ -116,6 +133,9 @@ pub trait Hypervisor: Send + Sync {
     /// 请求停止 run 循环（可选，默认忽略）。
     /// run 循环会在下一轮检查此标志并优雅退出。
     fn request_stop(&self) {}
+
+    /// 注册设备 I/O 分发钩子（run 之前调用；默认忽略）。
+    fn set_io_handler(&self, _handler: Arc<dyn VmIoHandler>) {}
 }
 
 /// 探测当前平台 hypervisor。

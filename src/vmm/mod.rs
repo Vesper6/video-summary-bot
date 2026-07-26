@@ -11,6 +11,7 @@ pub mod boot;
 pub mod core;
 pub mod loader;
 pub mod memory;
+pub mod mmio_insn;
 pub mod vcpu;
 
 pub use core::Vmm;

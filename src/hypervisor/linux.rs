@@ -162,14 +162,17 @@ mod kvm_impl {
         }
 
         /// vCPU 0 运行循环（同步，在 spawn_blocking 线程中调用）。
-        pub fn run_vcpu0(&self) -> Result<i32> {
+        pub fn run_vcpu0(
+            &self,
+            io_handler: Option<&Arc<dyn crate::hypervisor::VmIoHandler>>,
+        ) -> Result<i32> {
             let vcpu = self
                 .vcpus
                 .first()
                 .ok_or_else(|| Error::Vmm("no vCPUs".into()))?;
             loop {
                 match vcpu.run() {
-                    Ok(exit) => match handle_kvm_exit(exit) {
+                    Ok(exit) => match handle_kvm_exit(exit, io_handler) {
                         KvmAction::Continue => {}
                         KvmAction::Halt => {
                             tracing::info!("vCPU 0 halted");
@@ -201,13 +204,19 @@ mod kvm_impl {
     }
 
     /// 处理 KVM exit reason。
-    fn handle_kvm_exit(exit: VcpuExit<'_>) -> KvmAction {
+    fn handle_kvm_exit(
+        exit: VcpuExit<'_>,
+        io_handler: Option<&Arc<dyn crate::hypervisor::VmIoHandler>>,
+    ) -> KvmAction {
         match exit {
             VcpuExit::IoIn(port, data) => {
                 tracing::trace!("I/O IN port={:#x} size={}", port, data.len());
-                // 默认返回 0xFF（未知设备）
-                for b in data.iter_mut() {
-                    *b = 0xFF;
+                let sz = data.len() as u8;
+                let val = io_handler
+                    .and_then(|h| h.pio_read(port, sz))
+                    .unwrap_or(0xFFFF_FFFF);
+                for (i, b) in data.iter_mut().enumerate() {
+                    *b = (val >> (i * 8)) as u8;
                 }
                 KvmAction::Continue
             }
@@ -220,11 +229,22 @@ mod kvm_impl {
                 // 串口输出（0x3F8 = COM1）
                 if port == 0x3F8 {
                     print!("{}", char::from(data[0]));
+                } else if let Some(h) = io_handler {
+                    let mut v = 0u32;
+                    for (i, b) in data.iter().take(4).enumerate() {
+                        v |= (*b as u32) << (i * 8);
+                    }
+                    h.pio_write(port, v, data.len() as u8);
                 }
                 KvmAction::Continue
             }
             VcpuExit::MmioRead(addr, data) => {
                 tracing::trace!("MMIO read addr={:#x} size={}", addr, data.len());
+                let sz = data.len() as u8;
+                let val = io_handler.and_then(|h| h.mmio_read(addr, sz)).unwrap_or(0);
+                for (i, b) in data.iter_mut().enumerate() {
+                    *b = (val >> (i * 8)) as u8;
+                }
                 KvmAction::Continue
             }
             VcpuExit::MmioWrite(addr, data) => {
@@ -233,6 +253,13 @@ mod kvm_impl {
                     addr,
                     &data[..data.len().min(4)]
                 );
+                if let Some(h) = io_handler {
+                    let mut v = 0u64;
+                    for (i, b) in data.iter().take(8).enumerate() {
+                        v |= (*b as u64) << (i * 8);
+                    }
+                    h.mmio_write(addr, v, data.len() as u8);
+                }
                 KvmAction::Continue
             }
             VcpuExit::Hlt => KvmAction::Halt,
@@ -298,6 +325,7 @@ mod kvm_impl {
 struct KvmState {
     vm: Option<kvm_impl::KvmVm>,
     vm_state: VmState,
+    io_handler: Option<Arc<dyn crate::hypervisor::VmIoHandler>>,
 }
 
 /// Linux KVM 后端。
@@ -329,6 +357,7 @@ impl KvmBackend {
                 state: Arc::new(RwLock::new(KvmState {
                     vm: None,
                     vm_state: VmState::Created,
+                    io_handler: None,
                 })),
                 kvm: Arc::new(kvm),
             })
@@ -401,6 +430,13 @@ impl Hypervisor for KvmBackend {
         "KVM"
     }
 
+    fn set_io_handler(&self, _handler: std::sync::Arc<dyn crate::hypervisor::VmIoHandler>) {
+        #[cfg(all(target_os = "linux", feature = "kvm"))]
+        {
+            self.state.write().io_handler = Some(_handler);
+        }
+    }
+
     async fn create_vm(&self, config: &VmConfig) -> Result<()> {
         #[cfg(all(target_os = "linux", feature = "kvm"))]
         {
@@ -460,6 +496,7 @@ impl Hypervisor for KvmBackend {
             let result = tokio::task::spawn_blocking(move || -> Result<i32> {
                 let mut state = state_arc.write();
 
+                let io_handler = state.io_handler.clone();
                 let vm = state
                     .vm
                     .as_mut()
@@ -470,7 +507,7 @@ impl Hypervisor for KvmBackend {
                 vm.create_vcpus(entry_rip)?;
 
                 tracing::info!("KVM run loop starting, entry RIP={:#x}", entry_rip);
-                let exit_code = vm.run_vcpu0()?;
+                let exit_code = vm.run_vcpu0(io_handler.as_ref())?;
 
                 state.vm_state = VmState::Stopped;
                 tracing::info!("KVM VM exited with code {}", exit_code);

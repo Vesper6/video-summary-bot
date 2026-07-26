@@ -110,7 +110,7 @@ pub async fn run_boot(opts: BootOptions, log: BootLog) -> Result<i32> {
     log_line(&log, format!("[vsb] initrd: {}", opts.initrd.display()));
     log_line(&log, format!("[vsb] rootfs: {}", opts.rootfs.display()));
 
-    let vmm = Vmm::new(config)?;
+    let vmm = std::sync::Arc::new(Vmm::new(config)?);
     log_line(&log, "[vsb] VMM created, loading kernel…");
 
     let regs = vmm.load_kernel()?;
@@ -135,6 +135,9 @@ pub async fn run_boot(opts: BootOptions, log: BootLog) -> Result<i32> {
 
     let hv = crate::hypervisor::create()?;
     hv.create_vm(&vmm.config).await?;
+
+    // 注册设备 I/O 分发（PIT / VirtIO MMIO / IRQ 注入）
+    hv.set_io_handler(Arc::clone(&vmm) as Arc<dyn crate::hypervisor::VmIoHandler>);
 
     // 注册停止钩子：API/GUI 的 stop 会通过 guest_control::request_stop() 中断 vCPU
     {

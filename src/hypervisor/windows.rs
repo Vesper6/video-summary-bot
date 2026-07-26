@@ -11,6 +11,12 @@ use async_trait::async_trait;
 use crate::error::{Error, Result};
 use crate::hypervisor::{Hypervisor, ProbeResult};
 use crate::vmm::VmConfig;
+#[cfg(all(target_os = "windows", feature = "whvp"))]
+use crate::vmm::VmState;
+#[cfg(all(target_os = "windows", feature = "whvp"))]
+use parking_lot::RwLock;
+#[cfg(all(target_os = "windows", feature = "whvp"))]
+use std::sync::Arc;
 
 // =============================================
 // Windows WHVP 实现（feature-gated）
@@ -20,6 +26,26 @@ use crate::vmm::VmConfig;
 mod whvp_impl {
     use super::*;
     use windows::Win32::System::Hypervisor::*;
+
+    /// x86 GPR 编号（ModRM reg 字段）→ WHVP 寄存器名。
+    pub(super) const GPR_NAMES: [WHV_REGISTER_NAME; 16] = [
+        WHvX64RegisterRax,
+        WHvX64RegisterRcx,
+        WHvX64RegisterRdx,
+        WHvX64RegisterRbx,
+        WHvX64RegisterRsp,
+        WHvX64RegisterRbp,
+        WHvX64RegisterRsi,
+        WHvX64RegisterRdi,
+        WHvX64RegisterR8,
+        WHvX64RegisterR9,
+        WHvX64RegisterR10,
+        WHvX64RegisterR11,
+        WHvX64RegisterR12,
+        WHvX64RegisterR13,
+        WHvX64RegisterR14,
+        WHvX64RegisterR15,
+    ];
 
     /// WHVP Partition 包装（RAII）
     pub(super) struct WhvpPartition {
@@ -45,6 +71,18 @@ mod whvp_impl {
                     let _ = WHvDeletePartition(handle);
                     Error::Vmm(format!("WHvSetPartitionProperty: {e}"))
                 })?;
+
+                // 启用 xAPIC 模拟：LAPIC 定时器由 WHVP 提供（guest 时钟源），
+                // 也是 WHvRequestInterrupt 注入 VirtIO IRQ 的前提。
+                let apic_mode: i32 = WHvX64LocalApicEmulationModeXApic.0;
+                if let Err(e) = WHvSetPartitionProperty(
+                    handle,
+                    WHvPartitionPropertyCodeLocalApicEmulationMode,
+                    &apic_mode as *const i32 as *const core::ffi::c_void,
+                    std::mem::size_of::<i32>() as u32,
+                ) {
+                    tracing::warn!("LAPIC emulation unavailable ({e}) — virtio IRQ 注入将失效");
+                }
 
                 WHvSetupPartition(handle).map_err(|e| {
                     let _ = WHvDeletePartition(handle);
@@ -94,6 +132,7 @@ mod whvp_impl {
         /// RIP/RSP/RSI/RFLAGS + CR0/CR3/CR4/EFER + CS/DS/ES/SS + GDTR。
         ///
         /// 这是让 Linux bzImage 64-bit 入口能执行的关键。
+        #[allow(clippy::too_many_arguments)]
         pub fn set_long_mode_entry(
             &self,
             vp_index: u32,
@@ -190,6 +229,43 @@ mod whvp_impl {
             }
         }
 
+        /// 读取单个 64-bit 寄存器。
+        pub fn get_reg(&self, vp_index: u32, name: WHV_REGISTER_NAME) -> Result<u64> {
+            unsafe {
+                let names = [name];
+                let mut values = [WHV_REGISTER_VALUE::default()];
+                WHvGetVirtualProcessorRegisters(
+                    self.handle,
+                    vp_index,
+                    names.as_ptr(),
+                    1,
+                    values.as_mut_ptr(),
+                )
+                .map_err(|e| Error::Vmm(format!("get_reg: {e}")))?;
+                Ok(values[0].Reg64)
+            }
+        }
+
+        /// 向 vCPU 注入固定向量中断（边沿触发，物理目标 APIC 0）。
+        /// 需要分区已启用 LAPIC 模拟。
+        pub fn request_interrupt(&self, vector: u32) -> Result<()> {
+            unsafe {
+                let ctrl = WHV_INTERRUPT_CONTROL {
+                    // bitfield：Type(8)=Fixed(0) | DestinationMode(4)=Physical(0)
+                    //           | TriggerMode(4)=Edge(0)
+                    _bitfield: WHvX64InterruptTypeFixed.0 as u64,
+                    Destination: 0,
+                    Vector: vector,
+                };
+                WHvRequestInterrupt(
+                    self.handle,
+                    &ctrl,
+                    std::mem::size_of::<WHV_INTERRUPT_CONTROL>() as u32,
+                )
+                .map_err(|e| Error::Vmm(format!("WHvRequestInterrupt(v={vector:#x}): {e}")))
+            }
+        }
+
         /// 设置单个 64-bit 寄存器。
         pub fn set_reg(&self, vp_index: u32, name: WHV_REGISTER_NAME, value: u64) -> Result<()> {
             unsafe {
@@ -273,6 +349,56 @@ mod whvp_impl {
             }
         }
     }
+
+    /// 模拟一次落在 VirtIO MMIO 区域的内存访问：
+    /// 解码指令 → 读/写设备 → 写回寄存器 → 推进 RIP。
+    /// 返回 `true` 表示已处理（RIP 已推进），`false` 表示无法解码。
+    pub(super) fn handle_mmio_access(
+        partition: &WhvpPartition,
+        handler: &Arc<dyn crate::hypervisor::VmIoHandler>,
+        gpa: u64,
+        rip: u64,
+        insn_bytes: &[u8],
+    ) -> Result<bool> {
+        use crate::vmm::mmio_insn::{decode_mmio_insn, MmioOp};
+
+        let Some(insn) = decode_mmio_insn(insn_bytes) else {
+            tracing::warn!(
+                "MMIO 指令无法解码 @rip={rip:#x} gpa={gpa:#x} bytes={:02x?}",
+                &insn_bytes[..insn_bytes.len().min(8)]
+            );
+            return Ok(false);
+        };
+        let next_rip = rip + insn.len as u64;
+        let size = insn.access_size;
+
+        match insn.op {
+            MmioOp::Load { reg, zero_extend } => {
+                let val = handler.mmio_read(gpa, size).unwrap_or(0);
+                let reg_name = GPR_NAMES[reg as usize];
+                let new = if zero_extend {
+                    val
+                } else {
+                    // 8/16 位普通 mov：仅覆盖低位，保留高位
+                    let old = partition.get_reg(0, reg_name)?;
+                    let mask = if size == 1 { 0xFF } else { 0xFFFF };
+                    (old & !mask) | (val & mask)
+                };
+                partition.set_reg(0, reg_name, new)?;
+                partition.set_reg(0, WHvX64RegisterRip, next_rip)?;
+            }
+            MmioOp::Store { reg } => {
+                let val = partition.get_reg(0, GPR_NAMES[reg as usize])?;
+                handler.mmio_write(gpa, val, size);
+                partition.set_reg(0, WHvX64RegisterRip, next_rip)?;
+            }
+            MmioOp::StoreImm { imm } => {
+                handler.mmio_write(gpa, imm, size);
+                partition.set_reg(0, WHvX64RegisterRip, next_rip)?;
+            }
+        }
+        Ok(true)
+    }
 }
 
 // =============================================
@@ -305,6 +431,8 @@ struct WhvpState {
     ram_size: u64,
     /// 停止标志：run 循环每轮检查（GUI/API 停止时置位）
     stop_flag: Arc<std::sync::atomic::AtomicBool>,
+    /// 设备 I/O 分发钩子（PIT / VirtIO MMIO / IRQ）
+    io_handler: Option<Arc<dyn crate::hypervisor::VmIoHandler>>,
 }
 
 /// Windows WHVP（Windows Hypervisor Platform）后端。
@@ -326,6 +454,7 @@ impl WhvpBackend {
                     ram_ptr: 0,
                     ram_size: 0,
                     stop_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    io_handler: None,
                 })),
             })
         }
@@ -343,7 +472,7 @@ impl WhvpBackend {
     ///
     /// `hva` 必须是 4KB 对齐的宿主虚拟地址；
     /// `gpa` + `size` 必须在 partition 范围内。
-    pub fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
+    pub fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             let mut state = self.state.write();
@@ -365,7 +494,10 @@ impl WhvpBackend {
             Ok(())
         }
         #[cfg(not(all(target_os = "windows", feature = "whvp")))]
-        Err(Error::Vmm("WHVP not available".into()))
+        {
+            let _ = (hva, gpa, size);
+            Err(Error::Vmm("WHVP not available".into()))
+        }
     }
 }
 
@@ -424,26 +556,37 @@ impl Hypervisor for WhvpBackend {
         }
     }
 
-    fn map_ram(&self, _hva: *mut u8, _gpa: u64, _size: u64) -> Result<()> {
+    fn set_io_handler(&self, _handler: std::sync::Arc<dyn crate::hypervisor::VmIoHandler>) {
+        #[cfg(all(target_os = "windows", feature = "whvp"))]
+        {
+            self.state.write().io_handler = Some(_handler);
+        }
+    }
+
+    fn map_ram(&self, hva: *mut u8, gpa: u64, size: u64) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             self.map_ram(hva, gpa, size)
         }
         #[cfg(not(all(target_os = "windows", feature = "whvp")))]
-        Err(Error::Vmm("WHVP not available".into()))
+        {
+            let _ = (hva, gpa, size);
+            Err(Error::Vmm("WHVP not available".into()))
+        }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn set_vcpu_entry(
         &self,
-        _rip: u64,
-        _rsp: u64,
-        _rsi: u64,
-        _cr0: u64,
-        _cr3: u64,
-        _cr4: u64,
-        _efer: u64,
-        _gdt_base: u64,
-        _gdt_limit: u16,
+        rip: u64,
+        rsp: u64,
+        rsi: u64,
+        cr0: u64,
+        cr3: u64,
+        cr4: u64,
+        efer: u64,
+        gdt_base: u64,
+        gdt_limit: u16,
     ) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
@@ -462,10 +605,13 @@ impl Hypervisor for WhvpBackend {
             Ok(())
         }
         #[cfg(not(all(target_os = "windows", feature = "whvp")))]
-        Err(Error::Vmm("WHVP not available".into()))
+        {
+            let _ = (rip, rsp, rsi, cr0, cr3, cr4, efer, gdt_base, gdt_limit);
+            Err(Error::Vmm("WHVP not available".into()))
+        }
     }
 
-    async fn create_vm(&self, _config: &VmConfig) -> Result<()> {
+    async fn create_vm(&self, config: &VmConfig) -> Result<()> {
         #[cfg(all(target_os = "windows", feature = "whvp"))]
         {
             let mut state = self.state.write();
@@ -485,7 +631,10 @@ impl Hypervisor for WhvpBackend {
         }
 
         #[cfg(not(all(target_os = "windows", feature = "whvp")))]
-        Err(Error::Vmm("WHVP not available".into()))
+        {
+            let _ = config;
+            Err(Error::Vmm("WHVP not available".into()))
+        }
     }
 
     async fn start(&self) -> Result<()> {
@@ -531,6 +680,7 @@ impl Hypervisor for WhvpBackend {
                 let ram_ptr = state.ram_ptr;
                 let ram_size = state.ram_size;
                 let stop_flag = Arc::clone(&state.stop_flag);
+                let io_handler = state.io_handler.clone();
                 stop_flag.store(false, std::sync::atomic::Ordering::SeqCst);
 
                 let entry = state.vcpu_entry.ok_or_else(|| {
@@ -568,8 +718,8 @@ impl Hypervisor for WhvpBackend {
                     }
                     let op = read(phys + i);
                     len += match op {
-                        0xE4 | 0xE5 | 0xE6 | 0xE7 => 2, // in/out imm8
-                        _ => 1,                         // in/out dx (0xEC-0xEF) 及兜底
+                        0xE4..=0xE7 => 2, // in/out imm8
+                        _ => 1,           // in/out dx (0xEC-0xEF) 及兜底
                     };
                     len
                 };
@@ -623,11 +773,23 @@ impl Hypervisor for WhvpBackend {
                     std::collections::HashMap::new();
                 let mut io_ports_seen: std::collections::HashMap<u16, u64> =
                     std::collections::HashMap::new();
+                // VirtIO IRQ → 中断向量映射：IRQ n → vector 0x30+n（避开 CPU 异常 0-31）
+                const IRQ_VECTOR_BASE: u32 = 0x30;
                 loop {
                     // GUI/API 请求停止：优雅退出
                     if stop_flag.load(std::sync::atomic::Ordering::Relaxed) {
                         tracing::info!("vCPU 0 收到停止请求，退出 run 循环");
                         break;
+                    }
+                    // 设备有待注入的中断：通过 LAPIC 注入固定向量
+                    if let Some(h) = &io_handler {
+                        if let Some(irq) = h.take_pending_irq() {
+                            if let Err(e) =
+                                partition.request_interrupt(IRQ_VECTOR_BASE + irq as u32)
+                            {
+                                tracing::trace!("irq inject failed: {e}");
+                            }
+                        }
                     }
                     let exit_ctx = partition.run_vcpu(0)?;
                     step_count += 1;
@@ -650,9 +812,41 @@ impl Hypervisor for WhvpBackend {
                         1 => {
                             let mem = unsafe { &exit_ctx.Anonymous.MemoryAccess };
                             let gpa = mem.Gpa;
-                            if step_count < 20 || step_count % 20000 == 0 {
+                            let mut handled = false;
+
+                            // 落在 VirtIO MMIO 区域 → 解码指令并模拟设备访问
+                            if let Some(h) = &io_handler {
+                                if gpa >= crate::devices::VirtioMmioBus::BASE_ADDR {
+                                    // WHVP 已附带指令字节；不足时从 guest RAM 补读
+                                    let mut ibytes = mem.InstructionBytes.to_vec();
+                                    if mem.InstructionByteCount == 0 {
+                                        if let Some(phys) = partition.translate_gva(0, rip) {
+                                            if phys < ram_size && ram_ptr != 0 {
+                                                ibytes = (0..16)
+                                                    .map(|k| {
+                                                        let off = phys + k;
+                                                        if off < ram_size {
+                                                            unsafe {
+                                                                *((ram_ptr + off as usize)
+                                                                    as *const u8)
+                                                            }
+                                                        } else {
+                                                            0
+                                                        }
+                                                    })
+                                                    .collect();
+                                            }
+                                        }
+                                    }
+                                    handled = whvp_impl::handle_mmio_access(
+                                        partition, h, gpa, rip, &ibytes,
+                                    )?;
+                                }
+                            }
+
+                            if !handled && (step_count < 20 || step_count % 20000 == 0) {
                                 tracing::info!(
-                                    "vCPU MemoryAccess: rip={:#x} gpa={:#x} ({} steps)",
+                                    "vCPU MemoryAccess (unhandled): rip={:#x} gpa={:#x} ({} steps)",
                                     rip,
                                     gpa,
                                     step_count
@@ -718,6 +912,31 @@ impl Hypervisor for WhvpBackend {
                                     let rax = (io.Rax & !0xFF) | val as u64;
                                     partition.complete_io(0, next_rip, Some(rax))?;
                                 }
+                            } else if io_handler
+                                .as_ref()
+                                .map(|h| {
+                                    // PIT 等平台设备端口
+                                    let sz = 1u8;
+                                    if is_write {
+                                        h.pio_write(port, (io.Rax & 0xFF) as u32, sz)
+                                    } else {
+                                        false // 读在下面单独处理以拿回值
+                                    }
+                                })
+                                .unwrap_or(false)
+                            {
+                                partition.complete_io(0, next_rip, None)?;
+                            } else if !is_write
+                                && io_handler.is_some()
+                                && crate::devices::pit::Pit::handles_port(port)
+                            {
+                                let val = io_handler
+                                    .as_ref()
+                                    .and_then(|h| h.pio_read(port, 1))
+                                    .unwrap_or(0xFF)
+                                    & 0xFF;
+                                let rax = (io.Rax & !0xFF) | val as u64;
+                                partition.complete_io(0, next_rip, Some(rax))?;
                             } else {
                                 // 其他端口：读返回 0xFF，写忽略
                                 if is_write {
