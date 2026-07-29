@@ -57,7 +57,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
 # 错误处理
 anyhow = "1.0"
-thiserror = "1.0"
+thiserror = "2.0"
 
 # 时间
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
